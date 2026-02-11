@@ -13,7 +13,7 @@ const OCRSPACE_KEY = process.env.OCRSPACE_KEY
 
 // ================== SESSION ==================
 // idle | waiting_employee_code | waiting_image
-// เก็บรูปได้สูงสุด 2 รูป
+// เก็บรูปได้สูงสุด 2 รูป ต่อ 1 session
 const sessions = new Map()
 
 function newSession() {
@@ -50,6 +50,7 @@ function isCancelText(text) {
 
 function isStartText(text) {
   const t = normalizeText(text)
+  // รองรับ "ส่งเอกสาร", "ส่ง เอกสาร", "ส่งเอกสารครับ"
   return t.replace(/\s/g, '').includes('ส่งเอกสาร')
 }
 
@@ -87,16 +88,34 @@ function validateEmployeeCode(input) {
   // ต้องเป็น A0001 - A2000
   const t = normalizeText(input).toUpperCase()
 
-  // ต้องเป็น A + 4 หลัก
   const m = t.match(/^A(\d{4})$/)
   if (!m) return { ok: false, code: '' }
 
   const num = parseInt(m[1], 10)
   if (num < 1 || num > 2000) return { ok: false, code: '' }
 
-  // normalize ให้เป็น A0001 เสมอ
   const code = 'A' + String(num).padStart(4, '0')
   return { ok: true, code }
+}
+
+// ================== DOC FORMAT CHECK ==================
+function isValidDocumentFormat(ocrText) {
+  const t = (ocrText || '').replace(/\s/g, '')
+
+  // คำหลักที่ควรมีในแบบฟอร์มของเรา
+  // (เพิ่ม/ลดได้ตามเอกสารจริง)
+  const keywords = [
+    'วันที่',
+    'เลขเอกสาร',
+    'เลขที่เอกสาร',
+    'เลขที่',
+    'รายละเอียด',
+    'ชื่อ'
+  ]
+
+  // ต้องเจออย่างน้อย 2 คำ
+  const hit = keywords.filter(k => t.includes(k)).length
+  return hit >= 2
 }
 
 // ================== WEBHOOK ==================
@@ -133,6 +152,7 @@ app.post('/webhook', async (req, res) => {
         session.step = 'waiting_employee_code'
         session.employeeCode = ''
         session.imageCount = 0
+
         await reply(event.replyToken, 'ได้เลยครับ 👤\nกรุณาพิมพ์รหัสพนักงาน')
         return res.sendStatus(200)
       }
@@ -144,7 +164,7 @@ app.post('/webhook', async (req, res) => {
         if (!v.ok) {
           await reply(
             event.replyToken,
-            'รหัสพนักงานไม่ถูกต้องครับ ❌\nกรุณากรอกใหม่ครับ'
+            'รหัสพนักงานไม่ถูกต้องครับ ❌\nกรุณากรอกรหัสพนักงานใหม่ครับ\n\nหรือพิมพ์ "ยกเลิก" เพื่อเริ่มใหม่'
           )
           return res.sendStatus(200)
         }
@@ -160,7 +180,7 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200)
       }
 
-      // 4) waiting image แต่ผู้ใช้พิมพ์ข้อความ
+      // 4) waiting image แต่พิมพ์ข้อความ
       if (session.step === 'waiting_image') {
         await reply(
           event.replyToken,
@@ -209,27 +229,50 @@ app.post('/webhook', async (req, res) => {
         }
       )
 
-      // 2) OCR
-      const ocrText = await ocrImage(imageRes.data)
-      console.log('OCR result:', ocrText)
+      // 2) OCR รอบแรก (tha + engine2)
+      let ocrText = await ocrImage(imageRes.data, { language: 'tha', engine: '2' })
+      let parsed = parseOcrText(ocrText)
 
-      if (!ocrText) {
-        await reply(event.replyToken, 'อ่านตัวอักษรไม่ออกครับ 😅\nลองถ่ายให้ชัดขึ้นอีกนิดได้ไหมครับ')
+      // 3) ตรวจรูปแบบเอกสาร (จาก OCR รอบแรก)
+      if (!isValidDocumentFormat(ocrText)) {
+        await reply(
+          event.replyToken,
+          '❌ รูปนี้ไม่ใช่เอกสารรูปแบบที่รองรับครับ\nกรุณาส่งรูปเอกสารตามแบบฟอร์มที่กำหนด 📄'
+        )
         return res.sendStatus(200)
       }
 
-      // 3) parse
-      const parsed = parseOcrText(ocrText)
-      parsed.employeeCode = session.employeeCode
+      // 4) ถ้าเลขเอกสารอ่านไม่ได้ -> OCR fallback รอบสอง (eng + engine1)
+      const badDocNo =
+        !parsed.docNo ||
+        parsed.docNo.trim().length < 3 ||
+        parsed.docNo.trim() === '่' ||
+        parsed.docNo.trim() === '้' ||
+        parsed.docNo.trim() === '๊' ||
+        parsed.docNo.trim() === '๋'
 
-      // 4) ส่งเข้า Google Sheet
+      if (badDocNo) {
+        const ocrText2 = await ocrImage(imageRes.data, { language: 'eng', engine: '1' })
+        const parsed2 = parseOcrText(ocrText2)
+
+        // ถ้ารอบสองได้เลขเอกสารดีขึ้น ให้ใช้รอบสอง
+        if (parsed2.docNo && parsed2.docNo.trim().length >= 3) {
+          ocrText = ocrText2
+          parsed = parsed2
+        }
+      }
+
+      // 5) เติมข้อมูล session
+      parsed.employeeCode = session.employeeCode
+      parsed.raw = ocrText
+
+      // 6) ส่งเข้า Google Sheet
       await sendToSheet(parsed)
 
-      // เพิ่ม count
+      // 7) เพิ่ม count
       session.imageCount += 1
 
-      // 5) reply
-      // ถ้ายังเหลืออีกรูป
+      // 8) reply
       if (session.imageCount < 2) {
         await reply(
           event.replyToken,
@@ -243,7 +286,6 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200)
       }
 
-      // ครบ 2 รูปแล้ว
       await reply(
         event.replyToken,
         `✅ บันทึกเรียบร้อย (รูปที่ 2/2)\n` +
@@ -253,7 +295,6 @@ app.post('/webhook', async (req, res) => {
           `จบรายการแล้วครับ 🎉\nถ้าต้องการส่งใหม่ พิมพ์ "ส่งเอกสาร"`
       )
 
-      // reset หลังครบ 2 รูป
       resetSession(userId)
       return res.sendStatus(200)
     }
@@ -283,11 +324,13 @@ app.post('/webhook', async (req, res) => {
 })
 
 // ================= OCR =================
-async function ocrImage(imageBuffer) {
+async function ocrImage(imageBuffer, options = {}) {
+  const { language = 'tha', engine = '2' } = options
+
   const form = new FormData()
   form.append('apikey', OCRSPACE_KEY)
-  form.append('language', 'tha')
-  form.append('OCREngine', '2')
+  form.append('language', language)
+  form.append('OCREngine', engine)
   form.append('scale', 'true')
   form.append('file', imageBuffer, { filename: 'image.jpg' })
 
@@ -295,12 +338,12 @@ async function ocrImage(imageBuffer) {
     headers: form.getHeaders()
   })
 
-  return res.data?.ParsedResults?.[0]?.ParsedText
+  return res.data?.ParsedResults?.[0]?.ParsedText || ''
 }
 
 // ================= PARSER (เช็คหัวข้อ + กันสลับ) =================
 function parseOcrText(text) {
-  const lines = text
+  const lines = (text || '')
     .split('\n')
     .map(l => l.trim())
     .filter(Boolean)
@@ -339,21 +382,11 @@ function parseOcrText(text) {
   let detail = findValueByLabel(detailLabels) || findNextLineAfterLabel(detailLabels)
   let remark = findValueByLabel(remarkLabels) || findNextLineAfterLabel(remarkLabels)
 
-  const looksLikeDate = (s) => /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/.test(s)
-  const looksLikeDocNo = (s) =>
-    /[A-Za-z]{1,4}\d{2,}|เลข|No\.?/i.test(s) || /^[0-9\-\/]{4,}$/.test(s)
+  const looksLikeDate = (s) => /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/.test(s || '')
 
+  // กันสลับ: ถ้า date ไม่เหมือนวันที่ แต่ docNo เหมือนวันที่ -> สลับ
   if (date && docNo) {
     if (!looksLikeDate(date) && looksLikeDate(docNo)) {
-      const tmp = date
-      date = docNo
-      docNo = tmp
-    }
-  }
-
-  // ถ้า docNo เป็นวันที่แบบชัดเจน และ date เป็นเลข/โค้ด ก็สลับกลับ
-  if (date && docNo) {
-    if (looksLikeDocNo(date) && looksLikeDate(docNo)) {
       const tmp = date
       date = docNo
       docNo = tmp
@@ -366,7 +399,7 @@ function parseOcrText(text) {
     name: name || '',
     detail: detail || '',
     remark: remark || '',
-    raw: text,
+    raw: text || '',
     timestamp: new Date().toISOString()
   }
 }
