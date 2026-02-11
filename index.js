@@ -11,19 +11,48 @@ app.use(express.json())
 const LINE_TOKEN = process.env.LINE_TOKEN
 const OCRSPACE_KEY = process.env.OCRSPACE_KEY
 
+// ================== CONFIG ==================
+const MAX_IMAGES_PER_SESSION = 2
+const SESSION_TIMEOUT_MS = 60 * 1000 // 1 นาที
+
 // ================== เก็บสถานะผู้ใช้ ==================
-// userId -> { step: 'idle' | 'waitingEmployeeCode' | 'waitingImage', employeeCode: '' }
+// userId -> {
+//   step: 'idle' | 'waitingEmployeeCode' | 'waitingImage',
+//   employeeCode: '',
+//   imagesCount: 0,
+//   lastActiveAt: 0
+// }
 const userState = new Map()
 
 function getState(userId) {
   if (!userState.has(userId)) {
-    userState.set(userId, { step: 'idle', employeeCode: '' })
+    userState.set(userId, {
+      step: 'idle',
+      employeeCode: '',
+      imagesCount: 0,
+      lastActiveAt: 0
+    })
   }
   return userState.get(userId)
 }
 
 function resetState(userId) {
-  userState.set(userId, { step: 'idle', employeeCode: '' })
+  userState.set(userId, {
+    step: 'idle',
+    employeeCode: '',
+    imagesCount: 0,
+    lastActiveAt: 0
+  })
+}
+
+function touchState(state) {
+  state.lastActiveAt = Date.now()
+}
+
+function isSessionExpired(state) {
+  if (state.step === 'idle') return false
+  if (!state.lastActiveAt) return false
+  return Date.now() - state.lastActiveAt > SESSION_TIMEOUT_MS
 }
 
 // ================== helper: ตรวจข้อความช่วยเหลือ ==================
@@ -44,18 +73,11 @@ function isHelpMessage(text) {
   return keywords.some(k => t.includes(k))
 }
 
-// 0) ยกเลิก (เฉพาะตอนมีขั้นตอนค้างอยู่)
-if (isCancelMessage(text)) {
-  if (state.step === 'idle') {
-    await reply(event.replyToken, 'ตอนนี้ยังไม่ได้เริ่มส่งเอกสารครับ 🙂\nถ้าต้องการเริ่ม กรุณาพิมพ์ "ส่งเอกสาร"')
-    return res.sendStatus(200)
-  }
-
-  resetState(userId)
-  await reply(event.replyToken, '❌ ยกเลิกเรียบร้อยครับ')
-  return res.sendStatus(200)
+// ================== helper: ยกเลิก ==================
+function isCancelMessage(text) {
+  const t = (text || '').trim()
+  return t === 'ยกเลิก' || t.includes('ยกเลิก')
 }
-
 
 // ================== helper: ตรวจรหัสพนักงาน ==================
 function normalizeEmployeeCode(text) {
@@ -65,14 +87,12 @@ function normalizeEmployeeCode(text) {
 function isValidEmployeeCode(code) {
   // รูปแบบ A0001 - A2000
   if (!/^A\d{4}$/.test(code)) return false
-
   const num = parseInt(code.slice(1), 10)
   return num >= 1 && num <= 2000
 }
 
 // ================== helper: ตรวจรูปแบบเอกสาร ==================
 function isValidDocumentFormat(ocrText) {
-  // เช็คว่ามีคำสำคัญอย่างน้อย 2 คำ
   const t = (ocrText || '').replace(/\s/g, '')
 
   const keywords = [
@@ -112,26 +132,21 @@ function parseOcrText(text) {
     .map(l => l.trim())
     .filter(Boolean)
 
-  // ตรวจว่าเป็นบรรทัดขยะไหม เช่น "่" "ๆ" "-" หรือไม่มีตัวอักษรเลย
   const isGarbage = (s) => {
     if (!s) return true
 
-    // ถ้าไม่มีตัวอักษร/ตัวเลขเลย => ขยะ
     const hasAlphaNum = /[A-Za-z0-9ก-๙]/.test(s)
     if (!hasAlphaNum) return true
 
-    // ถ้าเป็นวรรณยุกต์/สระไทยล้วน ๆ
     const onlyThaiMarks = /^[\u0E31-\u0E4E]+$/.test(s)
     if (onlyThaiMarks) return true
 
-    // สั้นเกินไป
     if (s.length <= 1) return true
 
     return false
   }
 
   const getAfter = (labels) => {
-    // labels: array ของหัวข้อที่อาจเป็นไปได้
     const idx = lines.findIndex(l => labels.includes(l))
     if (idx === -1) return ''
 
@@ -153,15 +168,13 @@ function parseOcrText(text) {
     timestamp: new Date().toISOString()
   }
 
-  // ================== กันสลับ date/docNo ==================
-  // ถ้า docNo ดันเป็นวันที่ และ date ดันเป็นรหัสเอกสาร => สลับกลับ
   const looksLikeDate = (s) => {
     if (!s) return false
     return /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s)
   }
 
+  // ถ้า docNo เป็นวันที่ และ date ไม่ใช่วันที่ -> สลับ
   if (looksLikeDate(parsed.docNo) && !looksLikeDate(parsed.date)) {
-    // อาจสลับ
     const tmp = parsed.docNo
     parsed.docNo = parsed.date
     parsed.date = tmp
@@ -196,12 +209,34 @@ app.post('/webhook', async (req, res) => {
   const state = getState(userId)
 
   try {
+    // ================== session timeout ==================
+    if (isSessionExpired(state)) {
+      resetState(userId)
+      // ไม่ต้อง reply ทุกครั้ง (กัน spam) แต่ในที่นี้ตอบให้รู้
+      await reply(
+        event.replyToken,
+        '⏳ หมดเวลาแล้วครับ (เกิน 1 นาที)\nกรุณาพิมพ์ "ส่งเอกสาร" เพื่อเริ่มใหม่'
+      )
+      return res.sendStatus(200)
+    }
+
     // ================== TEXT ==================
     if (event.message?.type === 'text') {
       const text = (event.message.text || '').trim()
 
-      // 0) ยกเลิกได้ทุกเวลา
+      // touch
+      touchState(state)
+
+      // 0) ยกเลิก
       if (isCancelMessage(text)) {
+        if (state.step === 'idle') {
+          await reply(
+            event.replyToken,
+            'ตอนนี้ยังไม่ได้เริ่มส่งเอกสารครับ 🙂\nถ้าต้องการเริ่ม กรุณาพิมพ์ "ส่งเอกสาร"'
+          )
+          return res.sendStatus(200)
+        }
+
         resetState(userId)
         await reply(event.replyToken, '❌ ยกเลิกเรียบร้อยครับ')
         return res.sendStatus(200)
@@ -214,8 +249,8 @@ app.post('/webhook', async (req, res) => {
           `📌 วิธีส่งเอกสาร
 1) พิมพ์ "ส่งเอกสาร"
 2) ใส่รหัสพนักงาน
-3) ส่งรูปเอกสารเข้ามา
-ระบบจะอ่านและบันทึกเข้า Google Sheet ให้ครับ ✅
+3) ส่งรูปเอกสารเข้ามา (ส่งได้สูงสุด 2 รูป)
+ถ้าไม่ส่งรูปเกิน 1 นาที ระบบจะจบ session อัตโนมัติ ✅
 
 (พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน)`
         )
@@ -226,6 +261,9 @@ app.post('/webhook', async (req, res) => {
       if (text === 'ส่งเอกสาร') {
         state.step = 'waitingEmployeeCode'
         state.employeeCode = ''
+        state.imagesCount = 0
+        touchState(state)
+
         await reply(event.replyToken, 'กรุณาพิมพ์รหัสพนักงานครับ 👤')
         return res.sendStatus(200)
       }
@@ -237,17 +275,19 @@ app.post('/webhook', async (req, res) => {
         if (!isValidEmployeeCode(code)) {
           await reply(
             event.replyToken,
-            '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก" เพื่อออกจากขั้นตอนนี้'
+            '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง (ตัวอย่าง: A0001)\nหรือพิมพ์ "ยกเลิก" เพื่อออกจากขั้นตอนนี้'
           )
           return res.sendStatus(200)
         }
 
         state.employeeCode = code
         state.step = 'waitingImage'
+        state.imagesCount = 0
+        touchState(state)
 
         await reply(
           event.replyToken,
-          'ส่งรูปเอกสารมาได้เลยครับ 📄'
+          'ส่งรูปเอกสารมาได้เลยครับ 📄\n(ส่งได้สูงสุด 2 รูป)'
         )
         return res.sendStatus(200)
       }
@@ -256,7 +296,9 @@ app.post('/webhook', async (req, res) => {
       if (state.step === 'waitingImage') {
         await reply(
           event.replyToken,
-          'ตอนนี้รอรูปเอกสารอยู่นะครับ 📄\nส่งรูปมาได้เลย หรือพิมพ์ "ยกเลิก"'
+          `ตอนนี้รอรูปเอกสารอยู่นะครับ 📄
+ส่งรูปมาได้เลย (ส่งได้สูงสุด 2 รูป)
+หรือพิมพ์ "ยกเลิก"`
         )
         return res.sendStatus(200)
       }
@@ -271,11 +313,24 @@ app.post('/webhook', async (req, res) => {
 
     // ================== IMAGE ==================
     if (event.message?.type === 'image') {
+      // touch
+      touchState(state)
+
       // ต้องอยู่ใน step รอรูปเท่านั้น
       if (state.step !== 'waitingImage' || !state.employeeCode) {
         await reply(
           event.replyToken,
           'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" แล้วใส่รหัสพนักงานก่อนครับ 🙂'
+        )
+        return res.sendStatus(200)
+      }
+
+      // ถ้าส่งครบแล้ว
+      if (state.imagesCount >= MAX_IMAGES_PER_SESSION) {
+        resetState(userId)
+        await reply(
+          event.replyToken,
+          'คุณส่งครบ 2 รูปแล้วครับ ✅\nถ้าต้องการส่งใหม่ กรุณาพิมพ์ "ส่งเอกสาร"'
         )
         return res.sendStatus(200)
       }
@@ -296,7 +351,10 @@ app.post('/webhook', async (req, res) => {
       console.log('OCR result:', ocrText)
 
       if (!ocrText) {
-        await reply(event.replyToken, 'อ่านตัวอักษรไม่ออกครับ 😅 กรุณาลองถ่ายใหม่ให้ชัดขึ้น')
+        await reply(
+          event.replyToken,
+          'อ่านตัวอักษรไม่ออกครับ 😅 กรุณาลองถ่ายใหม่ให้ชัดขึ้น'
+        )
         return res.sendStatus(200)
       }
 
@@ -318,17 +376,35 @@ app.post('/webhook', async (req, res) => {
       // 4) ส่งเข้า Google Sheet
       await sendToSheet(parsed)
 
-      // 5) reply กลับ LINE
-      await reply(
-        event.replyToken,
-        `✅ บันทึกเรียบร้อย
+      // 5) เพิ่มจำนวนรูป
+      state.imagesCount += 1
+      touchState(state)
+
+      // 6) reply กลับ LINE
+      if (state.imagesCount < MAX_IMAGES_PER_SESSION) {
+        await reply(
+          event.replyToken,
+          `✅ บันทึกเรียบร้อย (${state.imagesCount}/${MAX_IMAGES_PER_SESSION})
 👤 รหัสพนักงาน: ${parsed.employeeCode}
 📄 เลขที่: ${parsed.docNo || '-'}
-📅 วันที่: ${parsed.date || '-'}`
-      )
+📅 วันที่: ${parsed.date || '-'}
 
-      // 6) reset state (ให้เริ่มใหม่ทุกครั้ง)
-      resetState(userId)
+ส่งรูปถัดไปได้เลยครับ 📄`
+        )
+      } else {
+        await reply(
+          event.replyToken,
+          `✅ บันทึกเรียบร้อย (${state.imagesCount}/${MAX_IMAGES_PER_SESSION})
+👤 รหัสพนักงาน: ${parsed.employeeCode}
+📄 เลขที่: ${parsed.docNo || '-'}
+📅 วันที่: ${parsed.date || '-'}
+
+🎉 ส่งครบ 2 รูปแล้วครับ`
+        )
+
+        // ครบ 2 รูป -> จบ session
+        resetState(userId)
+      }
 
       return res.sendStatus(200)
     }
@@ -341,8 +417,9 @@ app.post('/webhook', async (req, res) => {
 })
 
 // ================= START =================
-app.listen(3000, () => {
-  console.log('🚀 LINE webhook running on port 3000')
+const PORT = process.env.PORT || 3000
+app.listen(PORT, () => {
+  console.log(`🚀 LINE webhook running on port ${PORT}`)
 })
 
 
