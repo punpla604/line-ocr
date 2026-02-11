@@ -55,7 +55,7 @@ app.post('/webhook', async (req, res) => {
         session.state = 'WAIT_EMPLOYEE_CODE'
         session.employeeCode = null
 
-        await reply(event.replyToken, 'กรุณากรอกรหัสพนักงาน (A0001 - A2000) ครับ')
+        await reply(event.replyToken, 'กรุณากรอกรหัสพนักงานครับ')
         return res.sendStatus(200)
       }
 
@@ -64,7 +64,7 @@ app.post('/webhook', async (req, res) => {
         if (!isValidEmployeeCode(text)) {
           await reply(
             event.replyToken,
-            '❌ รหัสพนักงานไม่ถูกต้อง\nกรุณากรอกใหม่ (A0001 - A2000)'
+            '❌ รหัสพนักงานไม่ถูกต้อง\nกรุณากรอกใหม่'
           )
           return res.sendStatus(200)
         }
@@ -135,7 +135,7 @@ app.post('/webhook', async (req, res) => {
       // ใส่รหัสพนักงาน
       parsed.employeeCode = session.employeeCode
 
-      console.log('PARSED:', parsed)
+      console.log('SENDING TO SHEET:', JSON.stringify(parsed, null, 2))
 
       // 4) ส่งเข้า Google Sheet
       await sendToSheet(parsed)
@@ -179,25 +179,78 @@ async function ocrImage(imageBuffer) {
   return res.data?.ParsedResults?.[0]?.ParsedText
 }
 
-// ================= PARSER =================
+// ================= PARSER (improved) =================
 function parseOcrText(text) {
-  const lines = text
+  const clean = (s) => (s || '')
+    .replace(/[ ]+/g, ' ')
+    .replace(/[：]/g, ':')
+    .trim()
+
+  const raw = text || ''
+  const lines = raw
     .split('\n')
-    .map(l => l.trim())
+    .map(l => clean(l))
     .filter(Boolean)
 
-  const getAfter = (label) => {
-    const i = lines.indexOf(label)
-    return i !== -1 ? (lines[i + 1] || '') : ''
+  // หาแบบ "หัวข้อ: ค่า" หรือ "หัวข้อ ค่า" หรืออยู่บรรทัดถัดไป
+  const findValue = (labels) => {
+    for (const label of labels) {
+      // 1) อยู่บรรทัดเดียวกัน: "วันที่: 01/01/2567"
+      let re = new RegExp(`${label}\\s*[:\\-]?\\s*(.+)$`, 'i')
+      for (const line of lines) {
+        const m = re.exec(line)
+        if (m && m[1]) return clean(m[1])
+      }
+
+      // 2) อยู่คนละบรรทัด:
+      for (let i = 0; i < lines.length - 1; i++) {
+        const l = lines[i]
+        if (new RegExp(`^${label}\\s*[:\\-]?$`, 'i').test(l)) {
+          return clean(lines[i + 1])
+        }
+      }
+    }
+    return ''
   }
 
+  let date = findValue(['วันที่', 'วันที', 'DATE'])
+  let docNo = findValue(['เลขเอกสาร', 'เลขที่เอกสาร', 'เลขที่', 'Document No', 'Doc No'])
+  let name = findValue(['ชื่อ', 'Name'])
+  let detail = findValue(['รายละเอียด', 'Detail', 'Description'])
+  let remark = findValue(['หมายเหตุ', 'หมาย เหตุ', 'Remark'])
+
+  // ---------- กรองค่าให้สมเหตุสมผล ----------
+  const looksLikeDate = (s) =>
+    /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/.test(s) ||
+    /\b\d{1,2}\s*(ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s*\d{2,4}\b/.test(s)
+
+  const looksLikeDocNo = (s) =>
+    /[A-Z0-9]{3,}/i.test(s) && !looksLikeDate(s)
+
+  // ถ้า docNo ดันเป็นวันที่ → สลับ
+  if (looksLikeDate(docNo) && !looksLikeDate(date)) {
+    const tmp = docNo
+    docNo = date
+    date = tmp
+  }
+
+  // ถ้า date ไม่เหมือนวันที่เลย แต่ docNo เหมือนวันที่ → สลับ
+  if (!looksLikeDate(date) && looksLikeDate(docNo)) {
+    const tmp = docNo
+    docNo = date
+    date = tmp
+  }
+
+  // ถ้า docNo เป็นข้อความยาวมาก ให้ทิ้ง
+  if (docNo && docNo.length > 40) docNo = ''
+
   return {
-    date: getAfter('วันที่'),
-    docNo: getAfter('เลขเอกสาร'),
-    name: getAfter('ชื่อ'),
-    detail: getAfter('รายละเอียด'),
-    remark: getAfter('หมายเหตุ'),
-    raw: text,
+    date,
+    docNo,
+    name,
+    detail,
+    remark,
+    raw,
     timestamp: new Date().toISOString()
   }
 }
@@ -220,9 +273,9 @@ async function reply(replyToken, text) {
 }
 
 // ================= START =================
-// Render จะกำหนด PORT ให้เอง
 const PORT = process.env.PORT || 3000
 
 app.listen(PORT, () => {
   console.log(`🚀 LINE webhook running on port ${PORT}`)
 })
+

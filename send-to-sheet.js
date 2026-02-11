@@ -18,7 +18,6 @@ async function sendToSheet(data) {
   } catch (err) {
     console.error('❌ ส่งเข้า Google Sheet ไม่สำเร็จ')
 
-    // ถ้า Apps Script ตอบกลับมา จะเห็นชัดมาก
     if (err.response) {
       console.error('STATUS:', err.response.status)
       console.error('DATA:', err.response.data)
@@ -31,3 +30,4 @@ async function sendToSheet(data) {
 }
 
 module.exports = sendToSheet
+
