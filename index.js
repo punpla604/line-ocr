@@ -11,100 +11,190 @@ app.use(express.json())
 const LINE_TOKEN = process.env.LINE_TOKEN
 const OCRSPACE_KEY = process.env.OCRSPACE_KEY
 
-// ================= SESSION (in-memory) =================
-// state: IDLE | WAIT_EMPLOYEE_CODE | READY_FOR_IMAGE
-const userSessions = new Map()
+// ================== SESSION ==================
+// idle | waiting_employee_code | waiting_image
+// เก็บรูปได้สูงสุด 2 รูป
+const sessions = new Map()
+
+function newSession() {
+  return {
+    step: 'idle',
+    employeeCode: '',
+    imageCount: 0 // 0,1,2
+  }
+}
 
 function getSession(userId) {
-  if (!userSessions.has(userId)) {
-    userSessions.set(userId, { state: 'IDLE', employeeCode: null })
-  }
-  return userSessions.get(userId)
+  if (!sessions.has(userId)) sessions.set(userId, newSession())
+  return sessions.get(userId)
 }
 
 function resetSession(userId) {
-  userSessions.set(userId, { state: 'IDLE', employeeCode: null })
+  sessions.set(userId, newSession())
 }
 
-// ================= EMPLOYEE CODE VALIDATION =================
-function isValidEmployeeCode(code) {
-  const m = /^A(\d{4})$/i.exec((code || '').trim())
-  if (!m) return false
+// ================== TEXT UTILS ==================
+function normalizeText(t = '') {
+  return t.toString().trim().replace(/\s+/g, ' ')
+}
+
+function isCancelText(text) {
+  const t = normalizeText(text).toLowerCase()
+  return (
+    t.includes('ยกเลิก') ||
+    t.includes('เริ่มใหม่') ||
+    t === 'cancel' ||
+    t === 'reset'
+  )
+}
+
+function isStartText(text) {
+  const t = normalizeText(text)
+  return t.replace(/\s/g, '').includes('ส่งเอกสาร')
+}
+
+function isHowToText(text) {
+  const t = normalizeText(text).toLowerCase()
+  const keywords = [
+    'ทำไง',
+    'ส่งไง',
+    'ส่งยังไง',
+    'ต้องทำไง',
+    'ต้องทำยังไง',
+    'ทำยังไง',
+    'วิธีส่ง',
+    'ใช้ยังไง',
+    'ทำอย่างไร',
+    'how',
+    'help'
+  ]
+  return keywords.some(k => t.includes(k))
+}
+
+function howToMessage() {
+  return (
+    `📌 วิธีใช้งานคร่าว ๆ\n` +
+    `1) พิมพ์คำว่า "ส่งเอกสาร"\n` +
+    `2) ใส่รหัสพนักงาน (A0001 - A2000)\n` +
+    `3) ส่งรูปเอกสารได้ 1-2 รูป\n\n` +
+    `ระบบจะอ่านตัวอักษรและบันทึกลง Google Sheet ให้อัตโนมัติครับ ✅\n` +
+    `หากต้องการยกเลิก พิมพ์ "ยกเลิก" ได้ทุกเวลา`
+  )
+}
+
+// ================== EMPLOYEE CODE VALIDATION ==================
+function validateEmployeeCode(input) {
+  // ต้องเป็น A0001 - A2000
+  const t = normalizeText(input).toUpperCase()
+
+  // ต้องเป็น A + 4 หลัก
+  const m = t.match(/^A(\d{4})$/)
+  if (!m) return { ok: false, code: '' }
 
   const num = parseInt(m[1], 10)
-  return num >= 1 && num <= 2000
+  if (num < 1 || num > 2000) return { ok: false, code: '' }
+
+  // normalize ให้เป็น A0001 เสมอ
+  const code = 'A' + String(num).padStart(4, '0')
+  return { ok: true, code }
 }
 
-// ================= WEBHOOK =================
+// ================== WEBHOOK ==================
 app.post('/webhook', async (req, res) => {
   const event = req.body.events?.[0]
   if (!event) return res.sendStatus(200)
 
-  const userId = event.source?.userId
-  if (!userId) return res.sendStatus(200)
-
+  const userId = event.source?.userId || 'unknown'
   const session = getSession(userId)
 
   try {
-    // ================= TEXT =================
+    // ================== TEXT ==================
     if (event.message?.type === 'text') {
-      const text = event.message.text?.trim() || ''
+      const text = normalizeText(event.message.text)
 
-      // เริ่มใหม่ทุกครั้งด้วยคำว่า "ส่งเอกสาร"
-      if (text === 'ส่งเอกสาร') {
-        session.state = 'WAIT_EMPLOYEE_CODE'
-        session.employeeCode = null
-
-        await reply(event.replyToken, 'กรุณากรอกรหัสพนักงานครับ')
+      // 0) ยกเลิก/เริ่มใหม่
+      if (isCancelText(text)) {
+        resetSession(userId)
+        await reply(
+          event.replyToken,
+          'ยกเลิกเรียบร้อยครับ ✅\nถ้าต้องการส่งใหม่ พิมพ์ "ส่งเอกสาร" ได้เลย'
+        )
         return res.sendStatus(200)
       }
 
-      // ถ้าอยู่ในขั้นตอนรอรหัส
-      if (session.state === 'WAIT_EMPLOYEE_CODE') {
-        if (!isValidEmployeeCode(text)) {
+      // 1) help
+      if (isHowToText(text)) {
+        await reply(event.replyToken, howToMessage())
+        return res.sendStatus(200)
+      }
+
+      // 2) start
+      if (isStartText(text)) {
+        session.step = 'waiting_employee_code'
+        session.employeeCode = ''
+        session.imageCount = 0
+        await reply(event.replyToken, 'ได้เลยครับ 👤\nกรุณาพิมพ์รหัสพนักงาน (A0001 - A2000)')
+        return res.sendStatus(200)
+      }
+
+      // 3) waiting employee code
+      if (session.step === 'waiting_employee_code') {
+        const v = validateEmployeeCode(text)
+
+        if (!v.ok) {
           await reply(
             event.replyToken,
-            '❌ รหัสพนักงานไม่ถูกต้อง\nกรุณากรอกใหม่'
+            'รหัสพนักงานไม่ถูกต้องครับ ❌\nกรุณาใส่รหัสรูปแบบ A0001 ถึง A2000\n(ตัวอย่าง: A0123)'
           )
           return res.sendStatus(200)
         }
 
-        // ผ่าน
-        session.state = 'READY_FOR_IMAGE'
-        session.employeeCode = text.toUpperCase()
+        session.employeeCode = v.code
+        session.step = 'waiting_image'
+        session.imageCount = 0
 
         await reply(
           event.replyToken,
-          `✅ ตรวจสอบรหัสพนักงานแล้ว (${session.employeeCode})\nส่งรูปเอกสารมาได้เลยครับ 📄`
+          `รับรหัสพนักงานแล้วครับ ✅ (${session.employeeCode})\nส่งรูปเอกสารมาได้เลยครับ 📄\n(ส่งได้สูงสุด 2 รูป)`
         )
         return res.sendStatus(200)
       }
 
-      // ถ้าอยู่ READY แล้ว แต่ user ส่ง text มาแทนรูป
-      if (session.state === 'READY_FOR_IMAGE') {
+      // 4) waiting image แต่ผู้ใช้พิมพ์ข้อความ
+      if (session.step === 'waiting_image') {
         await reply(
           event.replyToken,
-          'ตอนนี้พร้อมรับรูปเอกสารแล้วครับ 📄\nกรุณาส่งรูปได้เลย'
+          `ตอนนี้รอรูปเอกสารอยู่นะครับ 📄\nส่งรูปมาได้เลย (ได้อีก ${2 - session.imageCount} รูป)\nหรือพิมพ์ "ยกเลิก" เพื่อเริ่มใหม่`
         )
         return res.sendStatus(200)
       }
 
-      // กรณีอื่น ๆ
+      // 5) idle
       await reply(
         event.replyToken,
-        'ถ้าต้องการส่งเอกสาร กรุณาพิมพ์คำว่า "ส่งเอกสาร" ก่อนครับ'
+        'ถ้าต้องการส่งเอกสาร ให้พิมพ์คำว่า "ส่งเอกสาร" ก่อนครับ\nหรือพิมพ์ "ทำไง" เพื่อดูขั้นตอน'
       )
       return res.sendStatus(200)
     }
 
-    // ================= IMAGE =================
+    // ================== IMAGE ==================
     if (event.message?.type === 'image') {
-      // บังคับให้ต้องเริ่ม flow ก่อนทุกครั้ง
-      if (session.state !== 'READY_FOR_IMAGE') {
+      // ยังไม่เริ่ม
+      if (session.step !== 'waiting_image') {
         await reply(
           event.replyToken,
-          'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" และกรอกรหัสพนักงานก่อนครับ'
+          'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" แล้วใส่รหัสพนักงานก่อนครับ 🙂'
         )
+        return res.sendStatus(200)
+      }
+
+      // เกิน 2 รูป
+      if (session.imageCount >= 2) {
+        await reply(
+          event.replyToken,
+          'คุณส่งครบ 2 รูปแล้วครับ ✅\nถ้าต้องการส่งใหม่ พิมพ์ "ส่งเอกสาร" อีกครั้ง'
+        )
+        resetSession(userId)
         return res.sendStatus(200)
       }
 
@@ -124,33 +214,64 @@ app.post('/webhook', async (req, res) => {
       console.log('OCR result:', ocrText)
 
       if (!ocrText) {
-        await reply(event.replyToken, 'อ่านตัวอักษรไม่ออกครับ 😅')
-        resetSession(userId)
+        await reply(event.replyToken, 'อ่านตัวอักษรไม่ออกครับ 😅\nลองถ่ายให้ชัดขึ้นอีกนิดได้ไหมครับ')
         return res.sendStatus(200)
       }
 
       // 3) parse
       const parsed = parseOcrText(ocrText)
-
-      // ใส่รหัสพนักงาน
       parsed.employeeCode = session.employeeCode
-
-      console.log('SENDING TO SHEET:', JSON.stringify(parsed, null, 2))
 
       // 4) ส่งเข้า Google Sheet
       await sendToSheet(parsed)
 
-      // 5) reply กลับ LINE
+      // เพิ่ม count
+      session.imageCount += 1
+
+      // 5) reply
+      // ถ้ายังเหลืออีกรูป
+      if (session.imageCount < 2) {
+        await reply(
+          event.replyToken,
+          `✅ บันทึกเรียบร้อย (รูปที่ ${session.imageCount}/2)\n` +
+            `👤 รหัสพนักงาน: ${parsed.employeeCode}\n` +
+            `📄 เลขที่: ${parsed.docNo || '-'}\n` +
+            `📅 วันที่: ${parsed.date || '-'}\n\n` +
+            `ถ้าต้องการส่งรูปที่ 2 ส่งมาได้เลยครับ 📄\n` +
+            `หรือพิมพ์ "ยกเลิก" เพื่อจบ`
+        )
+        return res.sendStatus(200)
+      }
+
+      // ครบ 2 รูปแล้ว
       await reply(
         event.replyToken,
-        `✅ บันทึกเรียบร้อย
-👤 รหัสพนักงาน: ${parsed.employeeCode}
-📄 เลขที่: ${parsed.docNo || '-'}
-📅 วันที่: ${parsed.date || '-'}`
+        `✅ บันทึกเรียบร้อย (รูปที่ 2/2)\n` +
+          `👤 รหัสพนักงาน: ${parsed.employeeCode}\n` +
+          `📄 เลขที่: ${parsed.docNo || '-'}\n` +
+          `📅 วันที่: ${parsed.date || '-'}\n\n` +
+          `จบรายการแล้วครับ 🎉\nถ้าต้องการส่งใหม่ พิมพ์ "ส่งเอกสาร"`
       )
 
-      // reset เพื่อให้เริ่มใหม่ทุกครั้ง
+      // reset หลังครบ 2 รูป
       resetSession(userId)
+      return res.sendStatus(200)
+    }
+
+    // ================== OTHER MESSAGE TYPES ==================
+    if (event.message?.type) {
+      if (session.step === 'waiting_image') {
+        await reply(
+          event.replyToken,
+          'ตอนนี้ระบบรับเฉพาะ "รูปเอกสาร" นะครับ 📄\nส่งเป็นรูปถ่าย/สแกนได้เลย หรือพิมพ์ "ยกเลิก"'
+        )
+        return res.sendStatus(200)
+      }
+
+      await reply(
+        event.replyToken,
+        'ระบบนี้ใช้สำหรับส่ง "รูปเอกสาร" ครับ 📄\nพิมพ์ "ส่งเอกสาร" เพื่อเริ่ม'
+      )
       return res.sendStatus(200)
     }
 
@@ -170,87 +291,82 @@ async function ocrImage(imageBuffer) {
   form.append('scale', 'true')
   form.append('file', imageBuffer, { filename: 'image.jpg' })
 
-  const res = await axios.post(
-    'https://api.ocr.space/parse/image',
-    form,
-    { headers: form.getHeaders() }
-  )
+  const res = await axios.post('https://api.ocr.space/parse/image', form, {
+    headers: form.getHeaders()
+  })
 
   return res.data?.ParsedResults?.[0]?.ParsedText
 }
 
-// ================= PARSER (improved) =================
+// ================= PARSER (เช็คหัวข้อ + กันสลับ) =================
 function parseOcrText(text) {
-  const clean = (s) => (s || '')
-    .replace(/[ ]+/g, ' ')
-    .replace(/[：]/g, ':')
-    .trim()
-
-  const raw = text || ''
-  const lines = raw
+  const lines = text
     .split('\n')
-    .map(l => clean(l))
+    .map(l => l.trim())
     .filter(Boolean)
 
-  // หาแบบ "หัวข้อ: ค่า" หรือ "หัวข้อ ค่า" หรืออยู่บรรทัดถัดไป
-  const findValue = (labels) => {
-    for (const label of labels) {
-      // 1) อยู่บรรทัดเดียวกัน: "วันที่: 01/01/2567"
-      let re = new RegExp(`${label}\\s*[:\\-]?\\s*(.+)$`, 'i')
-      for (const line of lines) {
-        const m = re.exec(line)
-        if (m && m[1]) return clean(m[1])
+  const findValueByLabel = (labels) => {
+    for (const line of lines) {
+      for (const lb of labels) {
+        const regex = new RegExp(`^${lb}\\s*[:：]?\\s*(.+)$`, 'i')
+        const m = line.match(regex)
+        if (m && m[1]) return m[1].trim()
       }
+    }
+    return ''
+  }
 
-      // 2) อยู่คนละบรรทัด:
-      for (let i = 0; i < lines.length - 1; i++) {
-        const l = lines[i]
-        if (new RegExp(`^${label}\\s*[:\\-]?$`, 'i').test(l)) {
-          return clean(lines[i + 1])
+  const findNextLineAfterLabel = (labels) => {
+    for (let i = 0; i < lines.length; i++) {
+      for (const lb of labels) {
+        if (lines[i].replace(/\s/g, '') === lb.replace(/\s/g, '')) {
+          return (lines[i + 1] || '').trim()
         }
       }
     }
     return ''
   }
 
-  let date = findValue(['วันที่', 'วันที', 'DATE'])
-  let docNo = findValue(['เลขเอกสาร', 'เลขที่เอกสาร', 'เลขที่', 'Document No', 'Doc No'])
-  let name = findValue(['ชื่อ', 'Name'])
-  let detail = findValue(['รายละเอียด', 'Detail', 'Description'])
-  let remark = findValue(['หมายเหตุ', 'หมาย เหตุ', 'Remark'])
+  const dateLabels = ['วันที่', 'วันที', 'Date']
+  const docNoLabels = ['เลขเอกสาร', 'เลขที่เอกสาร', 'เลขที่', 'Doc No', 'Document No']
+  const nameLabels = ['ชื่อ', 'ผู้ยื่น', 'ผู้ขอ', 'Name']
+  const detailLabels = ['รายละเอียด', 'รายการ', 'Detail']
+  const remarkLabels = ['หมายเหตุ', 'Remark']
 
-  // ---------- กรองค่าให้สมเหตุสมผล ----------
-  const looksLikeDate = (s) =>
-    /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/.test(s) ||
-    /\b\d{1,2}\s*(ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s*\d{2,4}\b/.test(s)
+  let date = findValueByLabel(dateLabels) || findNextLineAfterLabel(dateLabels)
+  let docNo = findValueByLabel(docNoLabels) || findNextLineAfterLabel(docNoLabels)
+  let name = findValueByLabel(nameLabels) || findNextLineAfterLabel(nameLabels)
+  let detail = findValueByLabel(detailLabels) || findNextLineAfterLabel(detailLabels)
+  let remark = findValueByLabel(remarkLabels) || findNextLineAfterLabel(remarkLabels)
 
+  const looksLikeDate = (s) => /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/.test(s)
   const looksLikeDocNo = (s) =>
-    /[A-Z0-9]{3,}/i.test(s) && !looksLikeDate(s)
+    /[A-Za-z]{1,4}\d{2,}|เลข|No\.?/i.test(s) || /^[0-9\-\/]{4,}$/.test(s)
 
-  // ถ้า docNo ดันเป็นวันที่ → สลับ
-  if (looksLikeDate(docNo) && !looksLikeDate(date)) {
-    const tmp = docNo
-    docNo = date
-    date = tmp
+  if (date && docNo) {
+    if (!looksLikeDate(date) && looksLikeDate(docNo)) {
+      const tmp = date
+      date = docNo
+      docNo = tmp
+    }
   }
 
-  // ถ้า date ไม่เหมือนวันที่เลย แต่ docNo เหมือนวันที่ → สลับ
-  if (!looksLikeDate(date) && looksLikeDate(docNo)) {
-    const tmp = docNo
-    docNo = date
-    date = tmp
+  // ถ้า docNo เป็นวันที่แบบชัดเจน และ date เป็นเลข/โค้ด ก็สลับกลับ
+  if (date && docNo) {
+    if (looksLikeDocNo(date) && looksLikeDate(docNo)) {
+      const tmp = date
+      date = docNo
+      docNo = tmp
+    }
   }
-
-  // ถ้า docNo เป็นข้อความยาวมาก ให้ทิ้ง
-  if (docNo && docNo.length > 40) docNo = ''
 
   return {
-    date,
-    docNo,
-    name,
-    detail,
-    remark,
-    raw,
+    date: date || '',
+    docNo: docNo || '',
+    name: name || '',
+    detail: detail || '',
+    remark: remark || '',
+    raw: text,
     timestamp: new Date().toISOString()
   }
 }
@@ -273,9 +389,8 @@ async function reply(replyToken, text) {
 }
 
 // ================= START =================
-const PORT = process.env.PORT || 3000
-
-app.listen(PORT, () => {
-  console.log(`🚀 LINE webhook running on port ${PORT}`)
+app.listen(3000, () => {
+  console.log('🚀 LINE webhook running on port 3000')
 })
+
 
