@@ -200,60 +200,85 @@ function parseReceipt(ocrText) {
     if (m) vat = m[1]
   }
 
-  // ===== items: จับคู่ "บรรทัดก่อนหน้า" + "ราคา" =====
-  // logic:
-  // - ถ้าบรรทัดมีเงิน
-  // - ให้เอาบรรทัดนั้นเป็นราคา
-  // - แล้วเอาบรรทัดก่อนหน้า 1-2 บรรทัดเป็น desc
-  // - ตัดพวก Total / VAT / Signature / CreditCard
+    // ===== items: parse แบบ "ตาราง" =====
   const items = []
   {
-    const ignoreWords = ['total', 'vat', 'signature', 'cashier', 'page', 'receipt', 'creditcard']
-    const isIgnored = (s) => ignoreWords.some(w => (s || '').toLowerCase().includes(w))
+    // 1) หา index ของหัวตาราง Description
+    const startIdx = lines.findIndex(l =>
+      l.toLowerCase().includes('description')
+    )
 
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]
-      const price = findMoney(l)
-      if (!price) continue
+    // 2) หา index ของจุดสิ้นสุดตาราง (ก่อน Total / Signature / VAT)
+    const endIdx = lines.findIndex(l =>
+      /^(creditcard|total|signature|cashier|vat)/i.test(l.trim())
+    )
 
-      // ถ้าเป็น line ที่มี total/vat -> ข้าม
-      if (isIgnored(l)) continue
+    if (startIdx !== -1) {
+      const tableLines = lines.slice(
+        startIdx + 1,
+        endIdx !== -1 ? endIdx : startIdx + 80
+      )
 
-      // หา desc จากบรรทัดก่อนหน้า
-      const prev1 = lines[i - 1] || ''
-      const prev2 = lines[i - 2] || ''
-      const prev3 = lines[i - 3] || ''
-
-      // เลือก desc ที่ดูดีที่สุด
-      const candidates = [prev1, prev2, prev3]
-        .map(x => (x || '').trim())
+      // เอาเลขลำดับ + คำไร้สาระออก
+      const cleaned = tableLines
+        .map(l => l.trim())
         .filter(Boolean)
-        .filter(x => !findMoney(x))
-        .filter(x => x.length >= 3)
-        .filter(x => !isIgnored(x))
-        .filter(x => !/^(baht|no\.?|anau|description)$/i.test(x))
+        .filter(l => !/^(no\.?|baht|anau)$/i.test(l))
+        .filter(l => !/^\d+$/.test(l)) // บาง OCR แยกเลขลำดับเป็นบรรทัดเดี่ยว
+        .filter(l => !/^page/i.test(l))
 
-      const desc = candidates[0] || ''
+      // 3) แยก "รายการ" กับ "ราคา"
+      // - ราคา = ตัวเลขรูปแบบ 1,234.56
+      // - dash = "-" (หมายถึงไม่มีราคา)
+      const moneyRegex = /^[0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2}$/
+      const dashRegex = /^-+$/
 
-      items.push({ desc, price })
+      const descList = []
+      const priceList = []
+
+      for (const l of cleaned) {
+        const s = l.replace(/\s+/g, ' ').trim()
+
+        // ถ้าเป็นตัวเงินล้วนๆ
+        if (moneyRegex.test(s)) {
+          priceList.push(s)
+          continue
+        }
+
+        // ถ้าเป็น "-" ล้วนๆ
+        if (dashRegex.test(s)) {
+          priceList.push('-')
+          continue
+        }
+
+        // ถ้าเป็นบรรทัดที่มีทั้ง text + price ปน (กันไว้)
+        const mInline = s.match(/(.+?)\s+([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})$/)
+        if (mInline) {
+          descList.push(mInline[1].trim())
+          priceList.push(mInline[2].trim())
+          continue
+        }
+
+        // ถ้าเป็น text -> ถือเป็น description
+        descList.push(s)
+      }
+
+      // 4) จับคู่ตาม index
+      // ถ้าจำนวนราคาไม่เท่ารายการ -> ใช้ min
+      const n = Math.min(descList.length, priceList.length)
+
+      for (let i = 0; i < n; i++) {
+        const desc = descList[i]
+        const p = priceList[i]
+
+        items.push({
+          desc,
+          price: p === '-' ? null : p
+        })
+      }
     }
-
-    // กัน item ซ้ำ (OCR มักซ้ำ)
-    const uniq = []
-    const seen = new Set()
-    for (const it of items) {
-      const key = `${it.desc}|${it.price}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      uniq.push(it)
-    }
-
-    // จำกัดไม่ให้ยาวเกินไป
-    while (uniq.length > 30) uniq.pop()
-
-    items.length = 0
-    items.push(...uniq)
   }
+
 
   // ===== total: ใช้ "เงินตัวสุดท้ายในใบ" เป็น fallback =====
   let total = ''
