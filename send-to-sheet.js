@@ -3,12 +3,49 @@ const axios = require('axios')
 const SHEET_URL = process.env.SHEET_URL
 const SHEET_SECRET = process.env.SHEET_SECRET
 
+function toSheetPayload(data) {
+  const itemsJson = JSON.stringify(data.items || [])
+
+  return {
+    timestamp: data.timestamp || new Date().toISOString(),
+    employeeCode: data.employeeCode || '',
+
+    // เลขใบเสร็จ
+    receiptNo: data.receiptNo || data.bn || '',
+    bn: data.bn || '',
+    hn: data.hn || '',
+
+    // วันที่/เวลา
+    receiptDateRaw: data.receiptDateRaw || '',
+    timeText: data.timeText || '',
+
+    // ชื่อคนไข้
+    patientName: data.patientName || '',
+
+    // จ่ายด้วยอะไร
+    paymentType: data.paymentType || '',
+
+    // VAT / Total
+    vat: data.vat || '',
+    total: data.total || '',
+
+    // items
+    itemjson: itemsJson,     // <<< สำคัญ (ให้ตรงกับชีท)
+    itemsJson: itemsJson,    // เผื่อชีทใช้ชื่อนี้
+
+    // raw text
+    raw: data.raw || ''
+  }
+}
+
 async function sendToSheet(data) {
   if (!SHEET_URL) throw new Error('❌ Missing env: SHEET_URL')
   if (!SHEET_SECRET) throw new Error('❌ Missing env: SHEET_SECRET')
 
+  const payload = toSheetPayload(data)
+
   try {
-    const res = await axios.post(SHEET_URL, data, {
+    const res = await axios.post(SHEET_URL, payload, {
       timeout: 15000,
       headers: {
         'Content-Type': 'application/json',
@@ -33,5 +70,6 @@ async function sendToSheet(data) {
 }
 
 module.exports = sendToSheet
+
 
 

@@ -27,7 +27,7 @@ function defaultState() {
     waitingSince: null,
 
     // search
-    searchType: '',
+    searchType: '', // BN | HN | NAME | DATE
     searchWaitingSince: null
   }
 }
@@ -71,8 +71,8 @@ function isValidEmployeeCode(code) {
 }
 
 // ================== timeouts ==================
-const WAIT_IMAGE_MS = 3 * 60 * 1000 // 3 นาที
-const WAIT_SEARCH_MS = 60 * 1000 // 1 นาที
+const WAIT_IMAGE_MS = 60 * 1000
+const WAIT_SEARCH_MS = 60 * 1000
 
 function isExpired(ts, ms) {
   if (!ts) return false
@@ -104,6 +104,12 @@ function isOurReceipt(ocrText) {
   return mustHave.every(k => t.includes(k))
 }
 
+// ================== money helper ==================
+function findMoney(text) {
+  const m = (text || '').match(/([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})/)
+  return m ? m[1] : ''
+}
+
 // ================== Receipt parser ==================
 function parseReceipt(ocrText) {
   const raw = ocrText || ''
@@ -133,18 +139,31 @@ function parseReceipt(ocrText) {
     if (m) hn = m[1].trim()
   }
 
-  // Date raw
+  // Date + Time
   let receiptDateRaw = ''
+  let timeText = ''
   {
     const idx = lines.findIndex(l => l.toLowerCase().startsWith('date'))
     if (idx !== -1) {
       const line = lines[idx]
-      const m1 = line.match(/Date\s+(.+?)\s+Time/i)
-      if (m1) receiptDateRaw = m1[1].trim()
-      else {
-        const m2 = line.match(/Date\s+(.+)/i)
-        if (m2) receiptDateRaw = m2[1].trim()
+
+      // Date 31 January 2026 Time 18:01:02
+      const mDateTime = line.match(/Date\s+(.+?)\s+Time\s+([0-9]{2}:[0-9]{2}:[0-9]{2})/i)
+      if (mDateTime) {
+        receiptDateRaw = (mDateTime[1] || '').trim()
+        timeText = (mDateTime[2] || '').trim()
+      } else {
+        const mDate = line.match(/Date\s+(.+)/i)
+        if (mDate) receiptDateRaw = mDate[1].trim()
+
+        const mTime = line.match(/Time\s+([0-9]{2}:[0-9]{2}:[0-9]{2})/i)
+        if (mTime) timeText = mTime[1].trim()
       }
+    } else {
+      // fallback: หา line ที่มี time
+      const dtLine = lines.find(l => l.toLowerCase().includes('date') && l.toLowerCase().includes('time')) || ''
+      const mTime = dtLine.match(/Time\s+([0-9]{2}:[0-9]{2}:[0-9]{2})/i)
+      if (mTime) timeText = mTime[1].trim()
     }
   }
 
@@ -173,15 +192,7 @@ function parseReceipt(ocrText) {
     if (m) paymentType = m[1].trim()
   }
 
-  // Total
-  let total = ''
-  {
-    const totalLine = lines.find(l => l.toLowerCase().includes('total')) || ''
-    const moneyMatch = totalLine.match(/([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})/)
-    if (moneyMatch) total = moneyMatch[1]
-  }
-
-  // VAT
+  // VAT (บางใบ OCR จะไม่เจอเลขจริง)
   let vat = ''
   {
     const vatLine = lines.find(l => l.toLowerCase().includes('vat')) || ''
@@ -189,31 +200,89 @@ function parseReceipt(ocrText) {
     if (m) vat = m[1]
   }
 
-  // items
+  // ===== items: จับคู่ "บรรทัดก่อนหน้า" + "ราคา" =====
+  // logic:
+  // - ถ้าบรรทัดมีเงิน
+  // - ให้เอาบรรทัดนั้นเป็นราคา
+  // - แล้วเอาบรรทัดก่อนหน้า 1-2 บรรทัดเป็น desc
+  // - ตัดพวก Total / VAT / Signature / CreditCard
   const items = []
-  for (const l of lines) {
-    const money = l.match(/([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})/)
-    if (!money) continue
+  {
+    const ignoreWords = ['total', 'vat', 'signature', 'cashier', 'page', 'receipt', 'creditcard']
+    const isIgnored = (s) => ignoreWords.some(w => (s || '').toLowerCase().includes(w))
 
-    const low = l.toLowerCase()
-    if (low.includes('total') || low.includes('vat') || low.includes('signature')) continue
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i]
+      const price = findMoney(l)
+      if (!price) continue
 
-    const price = money[1]
-    const desc = l.replace(price, '').replace(/\s+/g, ' ').trim()
+      // ถ้าเป็น line ที่มี total/vat -> ข้าม
+      if (isIgnored(l)) continue
 
-    if (desc.length >= 2) items.push({ desc, price })
+      // หา desc จากบรรทัดก่อนหน้า
+      const prev1 = lines[i - 1] || ''
+      const prev2 = lines[i - 2] || ''
+      const prev3 = lines[i - 3] || ''
+
+      // เลือก desc ที่ดูดีที่สุด
+      const candidates = [prev1, prev2, prev3]
+        .map(x => (x || '').trim())
+        .filter(Boolean)
+        .filter(x => !findMoney(x))
+        .filter(x => x.length >= 3)
+        .filter(x => !isIgnored(x))
+        .filter(x => !/^(baht|no\.?|anau|description)$/i.test(x))
+
+      const desc = candidates[0] || ''
+
+      items.push({ desc, price })
+    }
+
+    // กัน item ซ้ำ (OCR มักซ้ำ)
+    const uniq = []
+    const seen = new Set()
+    for (const it of items) {
+      const key = `${it.desc}|${it.price}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      uniq.push(it)
+    }
+
+    // จำกัดไม่ให้ยาวเกินไป
+    while (uniq.length > 30) uniq.pop()
+
+    items.length = 0
+    items.push(...uniq)
+  }
+
+  // ===== total: ใช้ "เงินตัวสุดท้ายในใบ" เป็น fallback =====
+  let total = ''
+  {
+    const allMoney = lines
+      .map(l => findMoney(l))
+      .filter(Boolean)
+
+    if (allMoney.length > 0) {
+      total = allMoney[allMoney.length - 1]
+    }
   }
 
   return {
     timestamp: new Date().toISOString(),
-    receiptNo: bn, // ให้ชื่อ field ตรง sheet
+
+    // ให้ชื่อ field ตรง sheet
+    receiptNo: bn,
     bn,
     hn,
+
     receiptDateRaw,
+    timeText,
+
     patientName,
     paymentType,
     vat,
     total,
+
     items,
     raw
   }
@@ -271,7 +340,7 @@ app.post('/webhook', async (req, res) => {
           state = resetState(userId)
           await reply(
             event.replyToken,
-            '⏱️ รอรูปเกิน 3 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
+            '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
           )
           return res.sendStatus(200)
         }
@@ -301,7 +370,7 @@ app.post('/webhook', async (req, res) => {
       }
 
       // help
-      if (isHelpMessage(text)) {
+      if (isHelpMessage(text) || text === 'วิธีใช้') {
         await reply(
           event.replyToken,
           `📌 วิธีใช้งาน
@@ -309,19 +378,21 @@ app.post('/webhook', async (req, res) => {
 🟦 ส่งเอกสาร
 1) พิมพ์ "ส่งเอกสาร"
 2) ใส่รหัสพนักงาน
-3) ส่งรูปใบเสร็จ (ครั้งละ 1 รูป)
-(ถ้ารอรูปเกิน 3 นาที ระบบจะยกเลิกให้อัตโนมัติ)
+3) ส่งรูปใบเสร็จ "ทีละ 1 รูป"
+ระบบจะบันทึกให้ทันที
+
+(ถ้ารอรูปเกิน 1 นาที ระบบจะยกเลิกให้อัตโนมัติ)
 
 🔎 ค้นหา
 1) พิมพ์ "ค้นหา"
 2) ใส่รหัสพนักงาน
-3) เลือกประเภทการค้นหา
-1) BN (เลขใบเสร็จ)
+3) เลือกประเภทการค้นหาโดยพิมพ์เลข
+1) BN
 2) HN
-3) NAME (ชื่อคนไข้)
+3) NAME
 4) DATE (11/02/2026)
 
-(พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน)`
+พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน`
         )
         return res.sendStatus(200)
       }
@@ -363,7 +434,7 @@ app.post('/webhook', async (req, res) => {
 
           await reply(
             event.replyToken,
-            `โอเคครับ 👤 ${code}\nส่งรูปใบเสร็จมาได้เลยครับ 🧾\n(1 รูป = 1 ใบเสร็จ)`
+            `โอเคครับ 👤 ${code}\nส่งรูปใบเสร็จมาได้เลยครับ (ทีละ 1 รูป) 🧾`
           )
           return res.sendStatus(200)
         }
@@ -399,35 +470,32 @@ app.post('/webhook', async (req, res) => {
             event.replyToken,
             `โอเคครับ 👤 ${code}
 
-เลือกประเภทค้นหา:
-1) BN (เลขใบเสร็จ)
+เลือกประเภทค้นหา (พิมพ์เลข):
+1) BN
 2) HN
-3) NAME (ชื่อคนไข้)
-4) DATE (11/02/2026)
-
-พิมพ์เลข 1-4 ได้เลยครับ`
+3) NAME
+4) DATE (11/02/2026)`
           )
           return res.sendStatus(200)
         }
 
-        // 2) choose type (1-4)
+        // 2) choose type
         if (state.step === 'chooseSearchType') {
           const t = text.trim()
-          const ok = ['1', '2', '3', '4'].includes(t)
-
-          if (!ok) {
-            await reply(
-              event.replyToken,
-              '❌ เลือกไม่ถูกต้องครับ\nพิมพ์ได้แค่เลข 1 / 2 / 3 / 4\nหรือพิมพ์ "ยกเลิก"'
-            )
-            return res.sendStatus(200)
-          }
 
           const map = {
             '1': 'BN',
             '2': 'HN',
             '3': 'NAME',
             '4': 'DATE'
+          }
+
+          if (!map[t]) {
+            await reply(
+              event.replyToken,
+              '❌ กรุณาพิมพ์แค่ 1 / 2 / 3 / 4\nหรือพิมพ์ "ยกเลิก"'
+            )
+            return res.sendStatus(200)
           }
 
           state.searchType = map[t]
@@ -463,7 +531,6 @@ app.post('/webhook', async (req, res) => {
 
           let result
 
-          // ==== BN ====
           if (state.searchType === 'BN') {
             result = await querySheet({
               action: 'findByBN',
@@ -489,12 +556,13 @@ HN: ${d.hn || '-'}
 Name: ${d.name || '-'}
 Date: ${d.dateText || '-'}
 Payment: ${d.paymentType || '-'}
-Total: ${d.total || '-'}`
+Total: ${d.total || '-'}
+
+(พิมพ์ "ค้นหา" เพื่อค้นหาใหม่)`
             )
             return res.sendStatus(200)
           }
 
-          // ==== HN ====
           if (state.searchType === 'HN') {
             result = await querySheet({
               action: 'findByHN',
@@ -526,7 +594,6 @@ ${preview}
             return res.sendStatus(200)
           }
 
-          // ==== NAME ====
           if (state.searchType === 'NAME') {
             result = await querySheet({
               action: 'findByName',
@@ -558,7 +625,6 @@ ${preview}
             return res.sendStatus(200)
           }
 
-          // ==== DATE ====
           if (state.searchType === 'DATE') {
             result = await querySheet({
               action: 'countByDateReceipt',
@@ -599,7 +665,7 @@ ${preview}
         state = resetState(userId)
         await reply(
           event.replyToken,
-          '⏱️ รอรูปเกิน 3 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
+          '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
         )
         return res.sendStatus(200)
       }
@@ -638,25 +704,27 @@ ${preview}
       const parsed = parseReceipt(ocrText)
       parsed.employeeCode = state.employeeCode
 
-      // 5) บันทึกทันที (1 รูป = 1 ใบเสร็จ)
+      // 5) save (ทีละ 1 รูป)
       await sendToSheet(parsed)
 
-      // 6) ตอบกลับ
+      // reset timer ทุกครั้งที่มีรูปเข้ามา
+      state.waitingSince = Date.now()
+
+      // 6) reply result
       await reply(
         event.replyToken,
-        `✅ บันทึกเรียบร้อยแล้วครับ
+        `✅ บันทึกเรียบร้อยครับ
 
 👤 รหัสพนักงาน: ${state.employeeCode}
 BN: ${parsed.bn || '-'}
+Date: ${parsed.receiptDateRaw || '-'} ${parsed.timeText ? `(${parsed.timeText})` : ''}
 HN: ${parsed.hn || '-'}
-Date: ${parsed.receiptDateRaw || '-'}
 Total: ${parsed.total || '-'}
 
-(ถ้าจะส่งรูปเพิ่ม พิมพ์ "ส่งเอกสาร")`
+ส่งรูปต่อไปได้เลย 🧾
+หรือพิมพ์ "ยกเลิก" เพื่อจบ`
       )
 
-      // 7) reset
-      state = resetState(userId)
       return res.sendStatus(200)
     }
 
