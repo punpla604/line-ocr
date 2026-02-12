@@ -4,7 +4,7 @@ const axios = require('axios')
 const FormData = require('form-data')
 
 const sendToSheet = require('./send-to-sheet')
-const querySheet = require('./query-sheet') // <-- เพิ่มไฟล์นี้ (ผมจะให้โค้ดให้)
+
 
 const app = express()
 app.use(express.json())
