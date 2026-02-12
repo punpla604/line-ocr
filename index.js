@@ -24,7 +24,6 @@ function defaultState() {
     employeeCode: '',
 
     // upload
-    images: [],
     waitingSince: null,
 
     // search
@@ -41,7 +40,7 @@ function getState(userId) {
 function resetState(userId) {
   const s = defaultState()
   userState.set(userId, s)
-  return s // สำคัญ: คืน state ใหม่
+  return s
 }
 
 // ================== helper: cancel ==================
@@ -72,8 +71,8 @@ function isValidEmployeeCode(code) {
 }
 
 // ================== timeouts ==================
-const WAIT_IMAGE_MS = 60 * 1000
-const WAIT_SEARCH_MS = 60 * 1000
+const WAIT_IMAGE_MS = 3 * 60 * 1000 // 3 นาที
+const WAIT_SEARCH_MS = 60 * 1000 // 1 นาที
 
 function isExpired(ts, ms) {
   if (!ts) return false
@@ -137,7 +136,6 @@ function parseReceipt(ocrText) {
   // Date raw
   let receiptDateRaw = ''
   {
-    // กรณี Date กับ Time อยู่คนละบรรทัด -> เก็บเฉพาะหลัง Date
     const idx = lines.findIndex(l => l.toLowerCase().startsWith('date'))
     if (idx !== -1) {
       const line = lines[idx]
@@ -239,13 +237,11 @@ async function reply(replyToken, text) {
   )
 }
 
-// ================== QUERY SHEET (อยู่ในไฟล์นี้เลย) ==================
+// ================== QUERY SHEET ==================
 async function querySheet(params) {
   if (!SHEET_URL) throw new Error('Missing env: SHEET_URL')
   if (!SHEET_SECRET) throw new Error('Missing env: SHEET_SECRET')
 
-  // Apps Script ต้องรับ:
-  // action, employeeCode, bn, hn, name, date
   const url = `${SHEET_URL}?secret=${encodeURIComponent(SHEET_SECRET)}`
 
   const res = await axios.get(url, {
@@ -275,7 +271,7 @@ app.post('/webhook', async (req, res) => {
           state = resetState(userId)
           await reply(
             event.replyToken,
-            '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
+            '⏱️ รอรูปเกิน 3 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
           )
           return res.sendStatus(200)
         }
@@ -313,17 +309,17 @@ app.post('/webhook', async (req, res) => {
 🟦 ส่งเอกสาร
 1) พิมพ์ "ส่งเอกสาร"
 2) ใส่รหัสพนักงาน
-3) ส่งรูปใบเสร็จได้ "ทีละ 2 รูป"
-(ถ้ารอรูปเกิน 1 นาที ระบบจะยกเลิกให้อัตโนมัติ)
+3) ส่งรูปใบเสร็จ (ครั้งละ 1 รูป)
+(ถ้ารอรูปเกิน 3 นาที ระบบจะยกเลิกให้อัตโนมัติ)
 
 🔎 ค้นหา
 1) พิมพ์ "ค้นหา"
 2) ใส่รหัสพนักงาน
 3) เลือกประเภทการค้นหา
-- BN (เลขใบเสร็จ)
-- HN
-- NAME (ชื่อคนไข้)
-- DATE (11/02/2026)
+1) BN (เลขใบเสร็จ)
+2) HN
+3) NAME (ชื่อคนไข้)
+4) DATE (11/02/2026)
 
 (พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน)`
         )
@@ -363,12 +359,11 @@ app.post('/webhook', async (req, res) => {
 
           state.employeeCode = code
           state.step = 'waitingImage'
-          state.images = []
           state.waitingSince = Date.now()
 
           await reply(
             event.replyToken,
-            `โอเคครับ 👤 ${code}\nส่งรูปใบเสร็จมาได้เลยครับ (ส่งได้ 2 รูป) 🧾`
+            `โอเคครับ 👤 ${code}\nส่งรูปใบเสร็จมาได้เลยครับ 🧾\n(1 รูป = 1 ใบเสร็จ)`
           )
           return res.sendStatus(200)
         }
@@ -404,38 +399,45 @@ app.post('/webhook', async (req, res) => {
             event.replyToken,
             `โอเคครับ 👤 ${code}
 
-เลือกประเภทค้นหาได้เลย:
-1) BN
+เลือกประเภทค้นหา:
+1) BN (เลขใบเสร็จ)
 2) HN
-3) NAME
-4) DATE (รูปแบบ 11/02/2026)
+3) NAME (ชื่อคนไข้)
+4) DATE (11/02/2026)
 
-พิมพ์มาได้เลย เช่น "BN" หรือ "NAME"`
+พิมพ์เลข 1-4 ได้เลยครับ`
           )
           return res.sendStatus(200)
         }
 
-        // 2) choose type
+        // 2) choose type (1-4)
         if (state.step === 'chooseSearchType') {
-          const t = text.trim().toUpperCase()
-          const ok = ['BN', 'HN', 'NAME', 'DATE'].includes(t)
+          const t = text.trim()
+          const ok = ['1', '2', '3', '4'].includes(t)
 
           if (!ok) {
             await reply(
               event.replyToken,
-              '❌ ประเภทค้นหาไม่ถูกต้องครับ\nพิมพ์ได้แค่: BN / HN / NAME / DATE\nหรือพิมพ์ "ยกเลิก"'
+              '❌ เลือกไม่ถูกต้องครับ\nพิมพ์ได้แค่เลข 1 / 2 / 3 / 4\nหรือพิมพ์ "ยกเลิก"'
             )
             return res.sendStatus(200)
           }
 
-          state.searchType = t
+          const map = {
+            '1': 'BN',
+            '2': 'HN',
+            '3': 'NAME',
+            '4': 'DATE'
+          }
+
+          state.searchType = map[t]
           state.step = 'waitingSearchValue'
           state.searchWaitingSince = Date.now()
 
           const hint =
-            t === 'BN' ? 'พิมพ์เลข BN เช่น L69-01-003-761' :
-            t === 'HN' ? 'พิมพ์เลข HN เช่น 01-01-26-047' :
-            t === 'NAME' ? 'พิมพ์ชื่อคนไข้ เช่น Pun Kung' :
+            state.searchType === 'BN' ? 'พิมพ์เลข BN เช่น L69-01-003-761' :
+            state.searchType === 'HN' ? 'พิมพ์เลข HN เช่น 01-01-26-047' :
+            state.searchType === 'NAME' ? 'พิมพ์ชื่อคนไข้ เช่น Pun Kung' :
             'พิมพ์วันที่รูปแบบ 11/02/2026'
 
           await reply(event.replyToken, `พิมพ์ค่าที่ต้องการค้นหาได้เลยครับ\n${hint}`)
@@ -452,7 +454,6 @@ app.post('/webhook', async (req, res) => {
             return res.sendStatus(200)
           }
 
-          // DATE format check
           if (state.searchType === 'DATE') {
             if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
               await reply(event.replyToken, '❌ รูปแบบวันที่ไม่ถูกต้องครับ ต้องเป็น 11/02/2026')
@@ -462,7 +463,7 @@ app.post('/webhook', async (req, res) => {
 
           let result
 
-          // ==== ยิง Apps Script ให้ตรง action ====
+          // ==== BN ====
           if (state.searchType === 'BN') {
             result = await querySheet({
               action: 'findByBN',
@@ -488,13 +489,12 @@ HN: ${d.hn || '-'}
 Name: ${d.name || '-'}
 Date: ${d.dateText || '-'}
 Payment: ${d.paymentType || '-'}
-Total: ${d.total || '-'}
-
-(ค้นหา BN ได้ครั้งละ 1 ใบเสร็จ)`
+Total: ${d.total || '-'}`
             )
             return res.sendStatus(200)
           }
 
+          // ==== HN ====
           if (state.searchType === 'HN') {
             result = await querySheet({
               action: 'findByHN',
@@ -526,6 +526,7 @@ ${preview}
             return res.sendStatus(200)
           }
 
+          // ==== NAME ====
           if (state.searchType === 'NAME') {
             result = await querySheet({
               action: 'findByName',
@@ -557,6 +558,7 @@ ${preview}
             return res.sendStatus(200)
           }
 
+          // ==== DATE ====
           if (state.searchType === 'DATE') {
             result = await querySheet({
               action: 'countByDateReceipt',
@@ -597,7 +599,7 @@ ${preview}
         state = resetState(userId)
         await reply(
           event.replyToken,
-          '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
+          '⏱️ รอรูปเกิน 3 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
         )
         return res.sendStatus(200)
       }
@@ -636,39 +638,24 @@ ${preview}
       const parsed = parseReceipt(ocrText)
       parsed.employeeCode = state.employeeCode
 
-      // 5) เก็บไว้ใน session
-      state.images.push(parsed)
+      // 5) บันทึกทันที (1 รูป = 1 ใบเสร็จ)
+      await sendToSheet(parsed)
 
-      // reset timer ทุกครั้งที่มีรูปเข้ามา
-      state.waitingSince = Date.now()
-
-      // ยังไม่ครบ 2 รูป
-      if (state.images.length < 2) {
-        await reply(
-          event.replyToken,
-          `📸 รับรูปที่ ${state.images.length}/2 แล้วครับ\nส่งรูปต่อไปได้เลย หรือพิมพ์ "ยกเลิก"`
-        )
-        return res.sendStatus(200)
-      }
-
-      // 6) ครบ 2 รูป -> บันทึกทั้งคู่
-      for (const p of state.images) {
-        await sendToSheet(p)
-      }
-
-      // 7) ตอบกลับ
+      // 6) ตอบกลับ
       await reply(
         event.replyToken,
-        `✅ บันทึกเรียบร้อย 2 ใบเสร็จแล้วครับ
+        `✅ บันทึกเรียบร้อยแล้วครับ
 
 👤 รหัสพนักงาน: ${state.employeeCode}
-ใบที่ 1: BN ${state.images[0]?.bn || '-'} | Total ${state.images[0]?.total || '-'}
-ใบที่ 2: BN ${state.images[1]?.bn || '-'} | Total ${state.images[1]?.total || '-'}
+BN: ${parsed.bn || '-'}
+HN: ${parsed.hn || '-'}
+Date: ${parsed.receiptDateRaw || '-'}
+Total: ${parsed.total || '-'}
 
-(ถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร")`
+(ถ้าจะส่งรูปเพิ่ม พิมพ์ "ส่งเอกสาร")`
       )
 
-      // 8) reset
+      // 7) reset
       state = resetState(userId)
       return res.sendStatus(200)
     }
