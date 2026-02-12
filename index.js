@@ -5,80 +5,62 @@ const FormData = require('form-data')
 
 const sendToSheet = require('./send-to-sheet')
 
-
 const app = express()
 app.use(express.json())
 
 const LINE_TOKEN = process.env.LINE_TOKEN
 const OCRSPACE_KEY = process.env.OCRSPACE_KEY
+const SHEET_URL = process.env.SHEET_URL
+const SHEET_SECRET = process.env.SHEET_SECRET
 
 // ================== เก็บสถานะผู้ใช้ ==================
-// userId -> {
-//   mode: 'idle' | 'upload' | 'search',
-//   step: ...
-// }
 const userState = new Map()
 
-function getState(userId) {
-  if (!userState.has(userId)) {
-    userState.set(userId, {
-      mode: 'idle',
-      step: 'idle',
+function defaultState() {
+  return {
+    mode: 'idle', // idle | upload | search
+    step: 'idle',
 
-      employeeCode: '',
+    employeeCode: '',
 
-      // upload
-      images: [], // เก็บ OCR text ของแต่ละรูป
-      waitingSince: null, // timestamp ตอนเริ่มรอรูป
+    // upload
+    images: [],
+    waitingSince: null,
 
-      // search
-      searchType: '',
-      searchValue: '',
-      searchWaitingSince: null
-    })
+    // search
+    searchType: '',
+    searchWaitingSince: null
   }
+}
+
+function getState(userId) {
+  if (!userState.has(userId)) userState.set(userId, defaultState())
   return userState.get(userId)
 }
 
 function resetState(userId) {
-  userState.set(userId, {
-    mode: 'idle',
-    step: 'idle',
-    employeeCode: '',
-    images: [],
-    waitingSince: null,
-    searchType: '',
-    searchValue: '',
-    searchWaitingSince: null
-  })
+  const s = defaultState()
+  userState.set(userId, s)
+  return s // สำคัญ: คืน state ใหม่
 }
 
 // ================== helper: cancel ==================
 function isCancelMessage(text) {
-  const t = (text || '').trim()
-  return ['ยกเลิก', 'cancel', 'ออก', 'เลิก'].includes(t.toLowerCase())
+  const t = (text || '').trim().toLowerCase()
+  return ['ยกเลิก', 'cancel', 'ออก', 'เลิก'].includes(t)
 }
 
 // ================== helper: help ==================
 function isHelpMessage(text) {
   const t = (text || '').trim()
   const keywords = [
-    'ทำไง',
-    'ส่งไง',
-    'ส่งยังไง',
-    'ต้องทำไง',
-    'ต้องทำยังไง',
-    'ทำยังไง',
-    'วิธีส่ง',
-    'วิธีทำ',
-    'ช่วย',
-    'เริ่มยังไง',
-    'วิธีใช้'
+    'ทำไง', 'ส่งไง', 'ส่งยังไง', 'ต้องทำไง', 'ต้องทำยังไง',
+    'ทำยังไง', 'วิธีส่ง', 'วิธีทำ', 'ช่วย', 'เริ่มยังไง', 'วิธีใช้'
   ]
   return keywords.some(k => t.includes(k))
 }
 
-// ================== helper: normalize employeeCode ==================
+// ================== employeeCode ==================
 function normalizeEmployeeCode(text) {
   return (text || '').trim().toUpperCase().replace(/\s+/g, '')
 }
@@ -89,20 +71,20 @@ function isValidEmployeeCode(code) {
   return num >= 1 && num <= 2000
 }
 
-// ================== helper: timeouts ==================
-const WAIT_IMAGE_MS = 60 * 1000 // 1 นาที
-const WAIT_SEARCH_MS = 60 * 1000 // 1 นาที
+// ================== timeouts ==================
+const WAIT_IMAGE_MS = 60 * 1000
+const WAIT_SEARCH_MS = 60 * 1000
 
-function isExpired(ts) {
+function isExpired(ts, ms) {
   if (!ts) return false
-  return Date.now() - ts > WAIT_IMAGE_MS
+  return Date.now() - ts > ms
 }
 
 // ================== OCR ==================
 async function ocrImage(imageBuffer) {
   const form = new FormData()
   form.append('apikey', OCRSPACE_KEY)
-  form.append('language', 'eng') // ใบเสร็จคุณเป็นอังกฤษเยอะ
+  form.append('language', 'eng')
   form.append('OCREngine', '2')
   form.append('scale', 'true')
   form.append('file', imageBuffer, { filename: 'image.jpg' })
@@ -110,7 +92,7 @@ async function ocrImage(imageBuffer) {
   const res = await axios.post(
     'https://api.ocr.space/parse/image',
     form,
-    { headers: form.getHeaders() }
+    { headers: form.getHeaders(), timeout: 30000 }
   )
 
   return res.data?.ParsedResults?.[0]?.ParsedText
@@ -119,11 +101,7 @@ async function ocrImage(imageBuffer) {
 // ================== Receipt format check ==================
 function isOurReceipt(ocrText) {
   const t = (ocrText || '').toLowerCase().replace(/\s+/g, ' ')
-  const mustHave = [
-    'receipt',
-    'asoke skin hospital',
-    'asokeskinhospital.co.th'
-  ]
+  const mustHave = ['receipt', 'asoke skin hospital']
   return mustHave.every(k => t.includes(k))
 }
 
@@ -140,7 +118,7 @@ function parseReceipt(ocrText) {
     return lines.find(l => l.toLowerCase().includes(k)) || ''
   }
 
-  // BN (เช่น BN. L69-01-003-761)
+  // BN
   let bn = ''
   {
     const bnLine = findLineIncludes('bn')
@@ -148,7 +126,7 @@ function parseReceipt(ocrText) {
     if (m) bn = m[1].trim()
   }
 
-  // HN (เช่น HN 01-01-26-047)
+  // HN
   let hn = ''
   {
     const hnLine = findLineIncludes('hn')
@@ -156,37 +134,40 @@ function parseReceipt(ocrText) {
     if (m) hn = m[1].trim()
   }
 
-  // Date (เช่น Date 31 January 2026 Time 18:01:02)
+  // Date raw
   let receiptDateRaw = ''
   {
-    const dateLine = findLineIncludes('date')
-    const m = dateLine.match(/Date\s+(.+?)\s+Time/i)
-    if (m) receiptDateRaw = m[1].trim()
-  }
-
-  // Name
-  // ใบเสร็จคุณจะเป็น:
-  // Name Ms.
-  // Pun Kung
-  let patientName = ''
-  {
-    const idx = lines.findIndex(l => l.toLowerCase().startsWith('name'))
+    // กรณี Date กับ Time อยู่คนละบรรทัด -> เก็บเฉพาะหลัง Date
+    const idx = lines.findIndex(l => l.toLowerCase().startsWith('date'))
     if (idx !== -1) {
-      const next = lines[idx + 1] || ''
-      const next2 = lines[idx + 2] || ''
-      // ถ้าบรรทัดถัดไปเป็น Ms. / Mr. / Mrs. ก็เอาบรรทัดถัดไปอีกอันเป็นชื่อ
-      if (/^(mr|ms|mrs)\.?$/i.test(next.trim())) {
-        patientName = next2.trim()
-      } else {
-        // บางที name อยู่บรรทัดเดียว
-        const m = lines[idx].match(/Name\s+(.+)/i)
-        if (m) patientName = m[1].trim()
-        else patientName = next.trim()
+      const line = lines[idx]
+      const m1 = line.match(/Date\s+(.+?)\s+Time/i)
+      if (m1) receiptDateRaw = m1[1].trim()
+      else {
+        const m2 = line.match(/Date\s+(.+)/i)
+        if (m2) receiptDateRaw = m2[1].trim()
       }
     }
   }
 
-  // Type of Payment
+  // Name
+  let patientName = ''
+  {
+    const idx = lines.findIndex(l => l.toLowerCase().startsWith('name'))
+    if (idx !== -1) {
+      const next = (lines[idx + 1] || '').trim()
+      const next2 = (lines[idx + 2] || '').trim()
+
+      if (/^(mr|ms|mrs)\.?$/i.test(next)) {
+        patientName = next2
+      } else {
+        const m = lines[idx].match(/Name\s+(.+)/i)
+        patientName = m ? m[1].trim() : next
+      }
+    }
+  }
+
+  // Payment
   let paymentType = ''
   {
     const payLine = findLineIncludes('type of payment')
@@ -194,17 +175,15 @@ function parseReceipt(ocrText) {
     if (m) paymentType = m[1].trim()
   }
 
-  // Total (เอาตัวเลขสุดท้ายที่เหมือนเงิน)
-  // ตัวอย่าง: 14,910.00
+  // Total
   let total = ''
   {
-    // หา line ที่มี Total
     const totalLine = lines.find(l => l.toLowerCase().includes('total')) || ''
     const moneyMatch = totalLine.match(/([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})/)
     if (moneyMatch) total = moneyMatch[1]
   }
 
-  // VAT (ถ้ามี)
+  // VAT
   let vat = ''
   {
     const vatLine = lines.find(l => l.toLowerCase().includes('vat')) || ''
@@ -212,29 +191,24 @@ function parseReceipt(ocrText) {
     if (m) vat = m[1]
   }
 
-  // รายการยา/บริการ + ราคา
-  // วิธี: เก็บทุกบรรทัดที่มีเงินรูปแบบ x,xxx.xx และมีตัวอักษรด้วย
+  // items
   const items = []
   for (const l of lines) {
     const money = l.match(/([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})/)
     if (!money) continue
 
-    // กันบรรทัด Total/VAT/Signature
     const low = l.toLowerCase()
     if (low.includes('total') || low.includes('vat') || low.includes('signature')) continue
 
-    // ตัดราคาออกจากท้าย
     const price = money[1]
     const desc = l.replace(price, '').replace(/\s+/g, ' ').trim()
 
-    if (desc.length >= 2) {
-      items.push({ desc, price })
-    }
+    if (desc.length >= 2) items.push({ desc, price })
   }
 
   return {
     timestamp: new Date().toISOString(),
-
+    receiptNo: bn, // ให้ชื่อ field ตรง sheet
     bn,
     hn,
     receiptDateRaw,
@@ -242,8 +216,7 @@ function parseReceipt(ocrText) {
     paymentType,
     vat,
     total,
-
-    items, // array
+    items,
     raw
   }
 }
@@ -260,9 +233,27 @@ async function reply(replyToken, text) {
       headers: {
         Authorization: `Bearer ${LINE_TOKEN}`,
         'Content-Type': 'application/json'
-      }
+      },
+      timeout: 15000
     }
   )
+}
+
+// ================== QUERY SHEET (อยู่ในไฟล์นี้เลย) ==================
+async function querySheet(params) {
+  if (!SHEET_URL) throw new Error('Missing env: SHEET_URL')
+  if (!SHEET_SECRET) throw new Error('Missing env: SHEET_SECRET')
+
+  // Apps Script ต้องรับ:
+  // action, employeeCode, bn, hn, name, date
+  const url = `${SHEET_URL}?secret=${encodeURIComponent(SHEET_SECRET)}`
+
+  const res = await axios.get(url, {
+    timeout: 20000,
+    params
+  })
+
+  return res.data
 }
 
 // ================== WEBHOOK ==================
@@ -271,17 +262,17 @@ app.post('/webhook', async (req, res) => {
   if (!event) return res.sendStatus(200)
 
   const userId = event.source?.userId
-  const state = getState(userId)
+  let state = getState(userId)
 
   try {
     // ================== TEXT ==================
     if (event.message?.type === 'text') {
       const text = (event.message.text || '').trim()
 
-      // ถ้าค้างรอรูป แล้วเกิน 1 นาที => reset
+      // timeout: upload
       if (state.mode === 'upload' && state.step === 'waitingImage') {
-        if (isExpired(state.waitingSince)) {
-          resetState(userId)
+        if (isExpired(state.waitingSince, WAIT_IMAGE_MS)) {
+          state = resetState(userId)
           await reply(
             event.replyToken,
             '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
@@ -290,10 +281,10 @@ app.post('/webhook', async (req, res) => {
         }
       }
 
-      // ถ้าค้างรอค้นหา แล้วเกิน 1 นาที => reset
+      // timeout: search
       if (state.mode === 'search' && state.step !== 'idle') {
-        if (state.searchWaitingSince && (Date.now() - state.searchWaitingSince > WAIT_SEARCH_MS)) {
-          resetState(userId)
+        if (isExpired(state.searchWaitingSince, WAIT_SEARCH_MS)) {
+          state = resetState(userId)
           await reply(
             event.replyToken,
             '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะค้นหาใหม่ พิมพ์ "ค้นหา"'
@@ -302,19 +293,18 @@ app.post('/webhook', async (req, res) => {
         }
       }
 
-      // 0) ยกเลิกได้ทุกเวลา
+      // cancel
       if (isCancelMessage(text)) {
         if (state.mode === 'idle') {
           await reply(event.replyToken, 'ตอนนี้ยังไม่ได้เริ่มอะไรครับ 🙂\nพิมพ์ "ส่งเอกสาร" หรือ "ค้นหา" ได้เลย')
           return res.sendStatus(200)
         }
-
-        resetState(userId)
+        state = resetState(userId)
         await reply(event.replyToken, '❌ ยกเลิกเรียบร้อยครับ')
         return res.sendStatus(200)
       }
 
-      // 1) help
+      // help
       if (isHelpMessage(text)) {
         await reply(
           event.replyToken,
@@ -340,10 +330,9 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200)
       }
 
-      // ===== Rich menu text triggers =====
-      // ให้กดแล้วเข้าสู่โหมดนั้นทันที
+      // ===== Rich menu triggers =====
       if (text === 'ส่งเอกสาร') {
-        resetState(userId)
+        state = resetState(userId)
         state.mode = 'upload'
         state.step = 'waitingEmployeeCode'
         await reply(event.replyToken, '🟦 ส่งเอกสาร\nกรุณาพิมพ์รหัสพนักงานครับ 👤')
@@ -351,16 +340,16 @@ app.post('/webhook', async (req, res) => {
       }
 
       if (text === 'ค้นหา') {
-        resetState(userId)
+        state = resetState(userId)
         state.mode = 'search'
         state.step = 'waitingEmployeeCodeForSearch'
+        state.searchWaitingSince = Date.now()
         await reply(event.replyToken, '🔎 ค้นหา\nกรุณาพิมพ์รหัสพนักงานก่อนครับ 👤')
         return res.sendStatus(200)
       }
 
       // ================== UPLOAD MODE ==================
       if (state.mode === 'upload') {
-        // รอรหัส
         if (state.step === 'waitingEmployeeCode') {
           const code = normalizeEmployeeCode(text)
 
@@ -379,16 +368,15 @@ app.post('/webhook', async (req, res) => {
 
           await reply(
             event.replyToken,
-            `โอเคครับ 👤 ${code}\nส่งรูปใบเสร็จมาได้เลยครับ (ส่งได้ 2 รูป) 📄`
+            `โอเคครับ 👤 ${code}\nส่งรูปใบเสร็จมาได้เลยครับ (ส่งได้ 2 รูป) 🧾`
           )
           return res.sendStatus(200)
         }
 
-        // รอรูป แต่ผู้ใช้พิมพ์ข้อความ
         if (state.step === 'waitingImage') {
           await reply(
             event.replyToken,
-            'ตอนนี้รอรูปใบเสร็จอยู่นะครับ 📄\nส่งรูปมาได้เลย หรือพิมพ์ "ยกเลิก"'
+            'ตอนนี้รอรูปใบเสร็จอยู่นะครับ 🧾\nส่งรูปมาได้เลย หรือพิมพ์ "ยกเลิก"'
           )
           return res.sendStatus(200)
         }
@@ -396,7 +384,7 @@ app.post('/webhook', async (req, res) => {
 
       // ================== SEARCH MODE ==================
       if (state.mode === 'search') {
-        // 1) รอรหัสพนักงานก่อน
+        // 1) employeeCode
         if (state.step === 'waitingEmployeeCodeForSearch') {
           const code = normalizeEmployeeCode(text)
 
@@ -427,7 +415,7 @@ app.post('/webhook', async (req, res) => {
           return res.sendStatus(200)
         }
 
-        // 2) เลือกประเภท
+        // 2) choose type
         if (state.step === 'chooseSearchType') {
           const t = text.trim().toUpperCase()
           const ok = ['BN', 'HN', 'NAME', 'DATE'].includes(t)
@@ -454,7 +442,7 @@ app.post('/webhook', async (req, res) => {
           return res.sendStatus(200)
         }
 
-        // 3) รับค่าค้นหา แล้วไปยิง Apps Script
+        // 3) value -> query
         if (state.step === 'waitingSearchValue') {
           const value = text.trim()
           const employeeCode = state.employeeCode
@@ -472,50 +460,118 @@ app.post('/webhook', async (req, res) => {
             }
           }
 
-          // query
-          const result = await querySheet({
-            action:
-              state.searchType === 'BN' ? 'findByBN' :
-              state.searchType === 'HN' ? 'findByHN' :
-              state.searchType === 'NAME' ? 'findByName' :
-              'countByDate',
-            employeeCode,
-            value
-          })
+          let result
 
-          // reset หลังค้นหา 1 ครั้ง
-          resetState(userId)
+          // ==== ยิง Apps Script ให้ตรง action ====
+          if (state.searchType === 'BN') {
+            result = await querySheet({
+              action: 'findByBN',
+              employeeCode,
+              bn: value
+            })
 
-          // output
+            state = resetState(userId)
+
+            if (!result.found) {
+              await reply(event.replyToken, 'ไม่พบข้อมูลครับ 😅')
+              return res.sendStatus(200)
+            }
+
+            const d = result.data || {}
+
+            await reply(
+              event.replyToken,
+              `🧾 พบใบเสร็จ 1 รายการ
+
+BN: ${d.bn || '-'}
+HN: ${d.hn || '-'}
+Name: ${d.name || '-'}
+Date: ${d.dateText || '-'}
+Payment: ${d.paymentType || '-'}
+Total: ${d.total || '-'}
+
+(ค้นหา BN ได้ครั้งละ 1 ใบเสร็จ)`
+            )
+            return res.sendStatus(200)
+          }
+
+          if (state.searchType === 'HN') {
+            result = await querySheet({
+              action: 'findByHN',
+              employeeCode,
+              hn: value
+            })
+
+            state = resetState(userId)
+
+            const list = result.list || []
+            if (list.length === 0) {
+              await reply(event.replyToken, 'ไม่พบข้อมูลครับ 😅')
+              return res.sendStatus(200)
+            }
+
+            const preview = list
+              .slice(0, 10)
+              .map((r, i) => `${i + 1}) ${r.dateShort || '-'} | BN ${r.bn || '-'} | Total ${r.total || '-'}`)
+              .join('\n')
+
+            await reply(
+              event.replyToken,
+              `🔎 พบทั้งหมด ${list.length} รายการ (HN: ${value})
+
+${preview}
+
+(แสดงสูงสุด 10 รายการ)`
+            )
+            return res.sendStatus(200)
+          }
+
+          if (state.searchType === 'NAME') {
+            result = await querySheet({
+              action: 'findByName',
+              employeeCode,
+              name: value
+            })
+
+            state = resetState(userId)
+
+            const list = result.list || []
+            if (list.length === 0) {
+              await reply(event.replyToken, 'ไม่พบข้อมูลครับ 😅')
+              return res.sendStatus(200)
+            }
+
+            const preview = list
+              .slice(0, 10)
+              .map((r, i) => `${i + 1}) ${r.dateShort || '-'} | BN ${r.bn || '-'} | Total ${r.total || '-'}`)
+              .join('\n')
+
+            await reply(
+              event.replyToken,
+              `🔎 พบทั้งหมด ${list.length} รายการ (NAME: ${value})
+
+${preview}
+
+(แสดงสูงสุด 10 รายการ)`
+            )
+            return res.sendStatus(200)
+          }
+
           if (state.searchType === 'DATE') {
+            result = await querySheet({
+              action: 'countByDateReceipt',
+              employeeCode,
+              date: value
+            })
+
+            state = resetState(userId)
+
             await reply(
               event.replyToken,
               `📅 วันที่ ${value}\nพนักงาน ${employeeCode} มีทั้งหมด ${result.count || 0} รายการครับ`
             )
             return res.sendStatus(200)
           }
-
-          if (!result.found) {
-            await reply(event.replyToken, 'ไม่พบข้อมูลครับ 😅')
-            return res.sendStatus(200)
-          }
-
-          // แสดง 1 เอกสารเท่านั้น
-          const d = result.data || {}
-          await reply(
-            event.replyToken,
-            `🧾 พบใบเสร็จ 1 รายการ
-
-BN: ${d.bn || '-'}
-HN: ${d.hn || '-'}
-Name: ${d.patientName || '-'}
-Date: ${d.date || '-'}
-Payment: ${d.paymentType || '-'}
-Total: ${d.total || '-'}
-
-(ค้นหาได้ครั้งละ 1 ใบเสร็จ)`
-          )
-          return res.sendStatus(200)
         }
       }
 
@@ -529,7 +585,6 @@ Total: ${d.total || '-'}
 
     // ================== IMAGE ==================
     if (event.message?.type === 'image') {
-      // ต้องอยู่ใน upload mode และ waitingImage
       if (state.mode !== 'upload' || state.step !== 'waitingImage' || !state.employeeCode) {
         await reply(
           event.replyToken,
@@ -538,9 +593,8 @@ Total: ${d.total || '-'}
         return res.sendStatus(200)
       }
 
-      // ถ้าเกินเวลา 1 นาที -> reset
-      if (isExpired(state.waitingSince)) {
-        resetState(userId)
+      if (isExpired(state.waitingSince, WAIT_IMAGE_MS)) {
+        state = resetState(userId)
         await reply(
           event.replyToken,
           '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
@@ -555,7 +609,8 @@ Total: ${d.total || '-'}
         `https://api-data.line.me/v2/bot/message/${messageId}/content`,
         {
           headers: { Authorization: `Bearer ${LINE_TOKEN}` },
-          responseType: 'arraybuffer'
+          responseType: 'arraybuffer',
+          timeout: 20000
         }
       )
 
@@ -587,7 +642,7 @@ Total: ${d.total || '-'}
       // reset timer ทุกครั้งที่มีรูปเข้ามา
       state.waitingSince = Date.now()
 
-      // ถ้ายังไม่ครบ 2 รูป -> ขอรูปถัดไป
+      // ยังไม่ครบ 2 รูป
       if (state.images.length < 2) {
         await reply(
           event.replyToken,
@@ -614,7 +669,7 @@ Total: ${d.total || '-'}
       )
 
       // 8) reset
-      resetState(userId)
+      state = resetState(userId)
       return res.sendStatus(200)
     }
 
@@ -629,6 +684,7 @@ Total: ${d.total || '-'}
 app.listen(3000, () => {
   console.log('🚀 LINE webhook running on port 3000')
 })
+
 
 
 
