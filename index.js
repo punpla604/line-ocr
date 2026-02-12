@@ -10,20 +10,20 @@ app.use(express.json())
 
 const LINE_TOKEN = process.env.LINE_TOKEN
 const OCRSPACE_KEY = process.env.OCRSPACE_KEY
-const SHEET_URL = process.env.SHEET_URL // ใช้ทั้งส่งเข้า และค้นหา
+const SHEET_URL = process.env.SHEET_URL
 
 // ================== CONFIG ==================
 const SESSION_TIMEOUT_MS = 60 * 1000 // 1 นาที
 const MAX_IMAGES_PER_SESSION = 2
 
-// ================== เก็บสถานะผู้ใช้ ==================
+// ================== STATE ==================
 // userId -> {
 //   mode: 'idle' | 'send' | 'search',
 //   step: string,
 //   employeeCode: '',
 //   imagesCount: 0,
 //   lastActive: number,
-//   searchType: '' // 'byEmployee' | 'byDocNo' | 'byDate'
+//   searchType: '',
 // }
 const userState = new Map()
 
@@ -65,13 +65,13 @@ function isSessionExpired(state) {
   return now() - (state.lastActive || 0) > SESSION_TIMEOUT_MS
 }
 
-// ================== helper: ตรวจข้อความ ==================
+// ================== TEXT HELPERS ==================
 function normalizeText(text) {
   return (text || '').trim()
 }
 
 function isCancelMessage(text) {
-  const t = normalizeText(text)
+  const t = normalizeText(text).toLowerCase()
   return t === 'ยกเลิก' || t === 'cancel'
 }
 
@@ -88,7 +88,12 @@ function isHelpMessage(text) {
     'วิธีทำ',
     'ช่วย',
     'เริ่มยังไง',
-    'ใช้ยังไง'
+    'ใช้ยังไง',
+    'ส่งเอกสารยังไง',
+    'ค้นยังไง',
+    'ค้นหา',
+    'วิธีใช้',
+    'search'
   ]
   return keywords.some(k => t.includes(k))
 }
@@ -116,22 +121,23 @@ function isValidDateFormat(text) {
   return true
 }
 
-// ================== helper: ตรวจรูปแบบเอกสาร ==================
-function isValidDocumentFormat(ocrText) {
-  // เช็คว่ามีคำสำคัญอย่างน้อย 2 คำ
-  const t = (ocrText || '').replace(/\s/g, '')
+// ================== RECEIPT FORMAT CHECK ==================
+function isAsokeReceipt(ocrText) {
+  const t = (ocrText || '').toLowerCase()
 
-  const keywords = ['วันที่', 'เลขเอกสาร', 'รายละเอียด', 'ชื่อ', 'หมายเหตุ']
-  const hit = keywords.filter(k => t.includes(k)).length
+  const hasReceipt = t.includes('receipt')
+  const hasAsoke = t.includes('asoke skin hospital')
+  const hasBN = /\bbn\b/.test(t) || t.includes('bn ')
 
-  return hit >= 2
+  const score = [hasReceipt, hasAsoke, hasBN].filter(Boolean).length
+  return score >= 2
 }
 
 // ================== OCR ==================
 async function ocrImage(imageBuffer) {
   const form = new FormData()
   form.append('apikey', OCRSPACE_KEY)
-  form.append('language', 'tha')
+  form.append('language', 'eng') // ใบเสร็จนี้เป็นอังกฤษเยอะ
   form.append('OCREngine', '2')
   form.append('scale', 'true')
   form.append('file', imageBuffer, { filename: 'image.jpg' })
@@ -145,75 +151,103 @@ async function ocrImage(imageBuffer) {
   return res.data?.ParsedResults?.[0]?.ParsedText
 }
 
-// ================== PARSER ==================
-function parseOcrText(text) {
-  const lines = (text || '')
+// ================== RECEIPT PARSER ==================
+function parseReceiptOcr(text) {
+  const raw = text || ''
+
+  const lines = raw
     .split('\n')
     .map(l => l.trim())
     .filter(Boolean)
 
-  const isGarbage = (s) => {
-    if (!s) return true
+  const join = lines.join('\n')
 
-    const hasAlphaNum = /[A-Za-z0-9ก-๙]/.test(s)
-    if (!hasAlphaNum) return true
+  // BN
+  // ตัวอย่าง: BN L89-01-002-761
+  const bnMatch =
+    join.match(/BN\s*[:\-]?\s*([A-Z0-9\-]{6,})/i) ||
+    join.match(/\bL\d{2,3}\-\d{2}\-\d{3}\-\d{3}\b/i)
 
-    const onlyThaiMarks = /^[\u0E31-\u0E4E]+$/.test(s)
-    if (onlyThaiMarks) return true
+  const bn = bnMatch ? (bnMatch[1] || bnMatch[0]).trim() : ''
 
-    if (s.length <= 1) return true
-    return false
+  // Date + Time
+  // ตัวอย่าง: Date 31 January 2026 Time 18:01:02
+  let dateText = ''
+  let timeText = ''
+
+  const dateTimeMatch = join.match(/Date\s*(.+?)\s*Time\s*([0-9]{1,2}:[0-9]{2}:[0-9]{2})/i)
+  if (dateTimeMatch) {
+    dateText = (dateTimeMatch[1] || '').trim()
+    timeText = (dateTimeMatch[2] || '').trim()
   }
 
-  // ดึงค่าได้ทั้งกรณี
-  // 1) หัวข้ออยู่บรรทัดเดียว: "เลขเอกสาร TEST-001"
-  // 2) หัวข้ออยู่บรรทัดถัดไป:
-  //    "เลขเอกสาร"
-  //    "TEST-001"
-  const getAfter = (labels) => {
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
+  // HN
+  // ตัวอย่าง: HN 01-01-26-047
+  const hnMatch = join.match(/HN\s*[:\-]?\s*([0-9\-]{5,})/i)
+  const hn = hnMatch ? hnMatch[1].trim() : ''
 
-      // แบบหัวข้ออยู่เดี่ยว
-      if (labels.includes(line)) {
-        for (let j = i + 1; j < Math.min(i + 7, lines.length); j++) {
-          const candidate = lines[j]
-          if (!isGarbage(candidate)) return candidate
-        }
-      }
+  // Name
+  // ตัวอย่าง: Name Ms. Lanne Comnual
+  const nameMatch = join.match(/Name\s*[:\-]?\s*(.+)/i)
+  const name = nameMatch ? nameMatch[1].trim() : ''
 
-      // แบบหัวข้อ + ค่าอยู่บรรทัดเดียว
-      for (const label of labels) {
-        if (line.startsWith(label)) {
-          const rest = line.replace(label, '').trim()
-          if (!isGarbage(rest)) return rest
-        }
-      }
+  // Payment
+  // ตัวอย่าง: Type of Payment : CreditCard
+  const payMatch = join.match(/Type\s*of\s*Payment\s*[:\-]?\s*(.+)/i)
+  const paymentType = payMatch ? payMatch[1].trim() : ''
+
+  // VAT
+  const vatMatch = join.match(/\bVAT\b\s*[:\-]?\s*([0-9\.,]+)/i)
+  const vat = vatMatch ? vatMatch[1].trim() : ''
+
+  // Total
+  // ตัวอย่าง: Total 14,910.00
+  const totalMatch = join.match(/\bTotal\b\s*[:\-]?\s*([0-9\.,]+)/i)
+  const total = totalMatch ? totalMatch[1].trim() : ''
+
+  // Items (รายการ + ราคา)
+  // รูปแบบ:
+  // 1 DOCTOR FEE 7,560.00
+  // 2 LASER THERAPY 500.00
+  // ...
+  const items = []
+
+  for (const line of lines) {
+    // 1 DOCTOR FEE 7,560.00
+    const m = line.match(/^(\d{1,2})\s+(.+?)\s+([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)$/)
+    if (m) {
+      items.push({
+        no: m[1].trim(),
+        description: m[2].trim(),
+        amount: m[3].trim()
+      })
     }
-
-    return ''
   }
 
-  const parsed = {
-    date: getAfter(['วันที่', 'วันที']),
-    docNo: getAfter(['เลขเอกสาร', 'เลขที่เอกสาร', 'เลขที่']),
-    name: getAfter(['ชื่อ', 'ชือ']),
-    detail: getAfter(['รายละเอียด']),
-    remark: getAfter(['หมายเหตุ']),
-    raw: text,
+  // fallback: total อาจอยู่บรรทัด "CreditCard 14,910.00"
+  if (!total) {
+    const ccMatch = join.match(/CreditCard\s*([0-9\.,]+)/i)
+    if (ccMatch) {
+      // ไม่ 100% แต่ช่วยได้
+      // ถ้า total ยังว่าง
+      // eslint-disable-next-line no-unused-vars
+      const guess = ccMatch[1].trim()
+    }
+  }
+
+  return {
+    bn,
+    dateText,
+    timeText,
+    hn,
+    name,
+    paymentType,
+    vat,
+    total,
+    items,
+    raw,
     timestamp: new Date().toISOString()
   }
-
-  // กันสลับ date/docNo
-  const looksLikeDate = (s) => /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s || '')
-
-  if (looksLikeDate(parsed.docNo) && !looksLikeDate(parsed.date)) {
-    const tmp = parsed.docNo
-    parsed.docNo = parsed.date
-    parsed.date = tmp
-  }
-
-  return parsed
 }
 
 // ================== LINE REPLY ==================
@@ -235,7 +269,6 @@ async function reply(replyToken, text) {
 
 // ================== SHEET SEARCH ==================
 async function querySheet(params) {
-  // เรียก Apps Script ด้วย query string (GET)
   const res = await axios.get(SHEET_URL, { params })
   return res.data
 }
@@ -252,20 +285,18 @@ app.post('/webhook', async (req, res) => {
     // ================== session timeout ==================
     if (isSessionExpired(state)) {
       resetState(userId)
-      // ไม่ต้อง reply ถ้าไม่อยากรบกวน แต่ผมแนะนำ reply
-      // เพื่อให้ user รู้ว่าทำไมมันไม่รับ
     }
 
     // ================== TEXT ==================
     if (event.message?.type === 'text') {
       const text = normalizeText(event.message.text)
 
-      // 0) ยกเลิกได้ทุกเวลา
+      // 0) ยกเลิก
       if (isCancelMessage(text)) {
         if (state.mode === 'idle') {
           await reply(
             event.replyToken,
-            'ตอนนี้ยังไม่ได้เริ่มทำรายการครับ 🙂\nถ้าต้องการเริ่ม พิมพ์ "ส่งเอกสาร" หรือ "ค้น" ได้เลย'
+            'ตอนนี้ยังไม่ได้เริ่มทำรายการครับ 🙂\nพิมพ์ "ส่งเอกสาร" หรือ "ค้นหา" ได้เลย'
           )
           return res.sendStatus(200)
         }
@@ -281,26 +312,27 @@ app.post('/webhook', async (req, res) => {
           event.replyToken,
           `📌 วิธีใช้งาน
 
-🟦 ส่งเอกสาร
-1) พิมพ์ "ส่งเอกสาร"
-2) ใส่รหัสพนักงาน
-3) ส่งรูปเอกสาร (ได้สูงสุด 2 รูป / รอบ)
+🧾 ส่งใบเสร็จ
+- พิมพ์ "ส่งเอกสาร"
+- ใส่รหัสพนักงาน
+- ส่งรูปใบเสร็จ (ได้สูงสุด 2 รูป / รอบ)
 ⏱️ ถ้ารอรูปเกิน 1 นาที ระบบจะจบ session อัตโนมัติ
 
-🟩 ค้นหา
-1) พิมพ์ "ค้น"
-2) ใส่รหัสพนักงาน
-3) เลือกค้นได้ 3 แบบ:
-- รหัสพนักงาน (ดูจำนวนทั้งหมด)
-- เลขเอกสาร (ได้ 1 เอกสาร)
-- วันที่ (รูปแบบ 11/02/2026)
+🔎 ค้นหา
+- พิมพ์ "ค้นหา"
+- ใส่รหัสพนักงาน
+- เลือกค้นหาได้:
+1) ชื่อคนไข้ (Name)
+2) เลขใบเสร็จ (BN)
+3) HN
+4) วันที่ (รูปแบบ 11/02/2026)
 
 พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน`
         )
         return res.sendStatus(200)
       }
 
-      // 2) เริ่มโหมดส่งเอกสาร
+      // 2) start send
       if (text === 'ส่งเอกสาร') {
         state.mode = 'send'
         state.step = 'waitingEmployeeCode'
@@ -313,8 +345,8 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200)
       }
 
-      // 3) เริ่มโหมดค้นหา
-      if (text === 'ค้น') {
+      // 3) start search
+      if (text === 'ค้นหา') {
         state.mode = 'search'
         state.step = 'waitingEmployeeCodeForSearch'
         state.employeeCode = ''
@@ -346,16 +378,15 @@ app.post('/webhook', async (req, res) => {
 
           await reply(
             event.replyToken,
-            `ยืนยันรหัสพนักงานแล้ว: ${code}\nส่งรูปเอกสารมาได้เลยครับ 📄 (ได้สูงสุด 2 รูป)`
+            `ยืนยันรหัสพนักงานแล้ว: ${code}\nส่งรูปใบเสร็จมาได้เลยครับ 🧾 (ได้สูงสุด 2 รูป)`
           )
           return res.sendStatus(200)
         }
 
         if (state.step === 'waitingImage') {
-          // ถ้าผู้ใช้พิมพ์ข้อความแทนรูป
           await reply(
             event.replyToken,
-            `ตอนนี้รอรูปเอกสารอยู่นะครับ 📄
+            `ตอนนี้รอรูปใบเสร็จอยู่นะครับ 🧾
 ส่งรูปมาได้เลย (ได้สูงสุด 2 รูป)
 ⏱️ ถ้ารอเกิน 1 นาที ระบบจะจบ session อัตโนมัติ
 หรือพิมพ์ "ยกเลิก"`
@@ -363,8 +394,7 @@ app.post('/webhook', async (req, res) => {
           return res.sendStatus(200)
         }
 
-        // fallback
-        await reply(event.replyToken, 'ถ้าต้องการส่งเอกสาร กรุณาพิมพ์ "ส่งเอกสาร" ก่อนครับ')
+        await reply(event.replyToken, 'ถ้าต้องการส่งใบเสร็จ กรุณาพิมพ์ "ส่งเอกสาร" ก่อนครับ')
         return res.sendStatus(200)
       }
 
@@ -391,10 +421,11 @@ app.post('/webhook', async (req, res) => {
             event.replyToken,
             `ยืนยันรหัสพนักงานแล้ว: ${code}
 
-เลือกค้นได้ 3 แบบ (พิมพ์ตัวเลข):
-1) ค้นด้วยรหัสพนักงาน (ดูจำนวนทั้งหมด)
-2) ค้นด้วยเลขเอกสาร (ได้ 1 เอกสาร)
-3) ค้นด้วยวันที่ (รูปแบบ 11/02/2026)`
+เลือกค้นหาได้ 4 แบบ (พิมพ์ตัวเลข):
+1) ชื่อคนไข้ (Name)
+2) เลขใบเสร็จ (BN)
+3) HN
+4) วันที่ (ตัวอย่าง 11/02/2026)`
           )
           return res.sendStatus(200)
         }
@@ -402,67 +433,107 @@ app.post('/webhook', async (req, res) => {
         // 2) เลือกประเภทค้นหา
         if (state.step === 'waitingSearchType') {
           if (text === '1') {
-            state.searchType = 'byEmployee'
-            state.step = 'runningSearch'
-          } else if (text === '2') {
-            state.searchType = 'byDocNo'
-            state.step = 'waitingDocNo'
-            await reply(event.replyToken, 'กรุณาพิมพ์เลขเอกสารที่ต้องการค้นครับ 📄 (ค้นได้ครั้งละ 1 เอกสาร)')
+            state.searchType = 'byName'
+            state.step = 'waitingName'
+            await reply(event.replyToken, 'กรุณาพิมพ์ชื่อคนไข้ (Name) ที่ต้องการค้นหาครับ 👤')
             return res.sendStatus(200)
-          } else if (text === '3') {
+          }
+
+          if (text === '2') {
+            state.searchType = 'byBN'
+            state.step = 'waitingBN'
+            await reply(event.replyToken, 'กรุณาพิมพ์เลขใบเสร็จ (BN) ที่ต้องการค้นหาครับ 🧾')
+            return res.sendStatus(200)
+          }
+
+          if (text === '3') {
+            state.searchType = 'byHN'
+            state.step = 'waitingHN'
+            await reply(event.replyToken, 'กรุณาพิมพ์ HN ที่ต้องการค้นหาครับ 🏥')
+            return res.sendStatus(200)
+          }
+
+          if (text === '4') {
             state.searchType = 'byDate'
             state.step = 'waitingDate'
-            await reply(event.replyToken, 'กรุณาพิมพ์วันที่รูปแบบนี้เท่านั้น: 11/02/2026 📅')
-            return res.sendStatus(200)
-          } else {
-            await reply(
-              event.replyToken,
-              `กรุณาเลือก 1, 2 หรือ 3 เท่านั้นครับ
-
-1) รหัสพนักงาน
-2) เลขเอกสาร
-3) วันที่ (11/02/2026)`
-            )
+            await reply(event.replyToken, 'กรุณาพิมพ์วันที่รูปแบบนี้เท่านั้น: ตัวอย่าง 11/02/2026 📅')
             return res.sendStatus(200)
           }
 
-          // run search by employee (ทันที)
-          if (state.searchType === 'byEmployee') {
-            const result = await querySheet({
-              action: 'countByEmployee',
-              employeeCode: state.employeeCode
-            })
+          await reply(
+            event.replyToken,
+            `กรุณาเลือก 1, 2, 3 หรือ 4 เท่านั้นครับ
 
-            if (!result?.ok) {
-              await reply(event.replyToken, `❌ ค้นหาไม่สำเร็จครับ\n${result?.error || ''}`)
-              resetState(userId)
-              return res.sendStatus(200)
-            }
-
-            await reply(
-              event.replyToken,
-              `👤 รหัสพนักงาน: ${state.employeeCode}
-📌 ส่งเอกสารไปทั้งหมด: ${result.count || 0} รายการ`
-            )
-
-            resetState(userId)
-            return res.sendStatus(200)
-          }
+1) ชื่อคนไข้ (Name)
+2) เลขใบเสร็จ (BN)
+3) HN
+4) วันที่ (ตัวอย่าง 11/02/2026)`
+          )
+          return res.sendStatus(200)
         }
 
-        // 3) รอเลขเอกสาร
-        if (state.step === 'waitingDocNo') {
-          const docNo = text.trim()
-
-          if (!docNo || docNo.length < 2) {
-            await reply(event.replyToken, '❌ เลขเอกสารไม่ถูกต้องครับ กรุณาพิมพ์ใหม่ หรือพิมพ์ "ยกเลิก"')
+        // ===== name =====
+        if (state.step === 'waitingName') {
+          const name = text.trim()
+          if (!name || name.length < 2) {
+            await reply(event.replyToken, '❌ ชื่อไม่ถูกต้องครับ กรุณาพิมพ์ใหม่ หรือพิมพ์ "ยกเลิก"')
             return res.sendStatus(200)
           }
 
           const result = await querySheet({
-            action: 'findByDocNo',
+            action: 'findByName',
             employeeCode: state.employeeCode,
-            docNo
+            name
+          })
+
+          if (!result?.ok) {
+            await reply(event.replyToken, `❌ ค้นหาไม่สำเร็จครับ\n${result?.error || ''}`)
+            resetState(userId)
+            return res.sendStatus(200)
+          }
+
+          const list = result.list || []
+          if (list.length === 0) {
+            await reply(
+              event.replyToken,
+              `ไม่พบใบเสร็จของชื่อนี้ครับ ❌
+👤 ${state.employeeCode}
+👤 Name: ${name}`
+            )
+            resetState(userId)
+            return res.sendStatus(200)
+          }
+
+          // แสดงแบบ list (ไม่ยาวเกิน)
+          const preview = list.slice(0, 10).map((r, i) => {
+            return `${i + 1}) BN: ${r.bn || '-'} | ${r.dateShort || r.dateText || '-'} | Total: ${r.total || '-'}`
+          }).join('\n')
+
+          await reply(
+            event.replyToken,
+            `👤 Name: ${name}
+📌 พบทั้งหมด: ${list.length} ใบ
+
+${preview}
+${list.length > 10 ? '\n... (แสดงแค่ 10 รายการแรก)' : ''}`
+          )
+
+          resetState(userId)
+          return res.sendStatus(200)
+        }
+
+        // ===== BN =====
+        if (state.step === 'waitingBN') {
+          const bn = text.trim()
+          if (!bn || bn.length < 4) {
+            await reply(event.replyToken, '❌ BN ไม่ถูกต้องครับ กรุณาพิมพ์ใหม่ หรือพิมพ์ "ยกเลิก"')
+            return res.sendStatus(200)
+          }
+
+          const result = await querySheet({
+            action: 'findByBN',
+            employeeCode: state.employeeCode,
+            bn
           })
 
           if (!result?.ok) {
@@ -474,46 +545,107 @@ app.post('/webhook', async (req, res) => {
           if (!result.found) {
             await reply(
               event.replyToken,
-              `ไม่พบเอกสารนี้ครับ ❌
+              `ไม่พบใบเสร็จนี้ครับ ❌
 👤 ${state.employeeCode}
-📄 เลขเอกสาร: ${docNo}`
+🧾 BN: ${bn}`
             )
             resetState(userId)
             return res.sendStatus(200)
           }
 
-          const row = result.data
+          const r = result.data
+
+          // สรุปรายการแบบอ่านง่าย
+          const items = (r.items || []).slice(0, 15).map(it => {
+            return `- ${it.description} : ${it.amount}`
+          }).join('\n')
 
           await reply(
             event.replyToken,
-            `📄 พบเอกสาร 1 รายการ
+            `🧾 พบใบเสร็จ 1 ใบ
 
-👤 ${row.employeeCode || '-'}
-📅 วันที่: ${row.date || '-'}
-📄 เลขเอกสาร: ${row.docNo || '-'}
-👤 ชื่อ: ${row.name || '-'}
-📝 รายละเอียด: ${row.detail || '-'}
-🗒️ หมายเหตุ: ${row.remark || '-'}`
+BN: ${r.bn || '-'}
+Date: ${r.dateText || '-'}
+Time: ${r.timeText || '-'}
+HN: ${r.hn || '-'}
+Name: ${r.name || '-'}
+Payment: ${r.paymentType || '-'}
+VAT: ${r.vat || '-'}
+Total: ${r.total || '-'}
+
+รายการ:
+${items || '-'}
+
+${(r.items || []).length > 15 ? '\n... (รายการยาว แสดงแค่ 15 บรรทัดแรก)' : ''}`
           )
 
           resetState(userId)
           return res.sendStatus(200)
         }
 
-        // 4) รอวันที่
+        // ===== HN =====
+        if (state.step === 'waitingHN') {
+          const hn = text.trim()
+          if (!hn || hn.length < 4) {
+            await reply(event.replyToken, '❌ HN ไม่ถูกต้องครับ กรุณาพิมพ์ใหม่ หรือพิมพ์ "ยกเลิก"')
+            return res.sendStatus(200)
+          }
+
+          const result = await querySheet({
+            action: 'findByHN',
+            employeeCode: state.employeeCode,
+            hn
+          })
+
+          if (!result?.ok) {
+            await reply(event.replyToken, `❌ ค้นหาไม่สำเร็จครับ\n${result?.error || ''}`)
+            resetState(userId)
+            return res.sendStatus(200)
+          }
+
+          const list = result.list || []
+          if (list.length === 0) {
+            await reply(
+              event.replyToken,
+              `ไม่พบใบเสร็จของ HN นี้ครับ ❌
+👤 ${state.employeeCode}
+🏥 HN: ${hn}`
+            )
+            resetState(userId)
+            return res.sendStatus(200)
+          }
+
+          const preview = list.slice(0, 10).map((r, i) => {
+            return `${i + 1}) BN: ${r.bn || '-'} | ${r.dateShort || r.dateText || '-'} | Total: ${r.total || '-'}`
+          }).join('\n')
+
+          await reply(
+            event.replyToken,
+            `🏥 HN: ${hn}
+📌 พบทั้งหมด: ${list.length} ใบ
+
+${preview}
+${list.length > 10 ? '\n... (แสดงแค่ 10 รายการแรก)' : ''}`
+          )
+
+          resetState(userId)
+          return res.sendStatus(200)
+        }
+
+        // ===== Date =====
         if (state.step === 'waitingDate') {
           const dateText = text.trim()
 
           if (!isValidDateFormat(dateText)) {
             await reply(
               event.replyToken,
-              '❌ รูปแบบวันที่ไม่ถูกต้องครับ\nกรุณาพิมพ์รูปแบบนี้เท่านั้น: 11/02/2026\nหรือพิมพ์ "ยกเลิก"'
+              '❌ รูปแบบวันที่ไม่ถูกต้องครับ\nกรุณาพิมพ์รูปแบบนี้เท่านั้น: ตัวอย่าง 11/02/2026\nหรือพิมพ์ "ยกเลิก"'
             )
             return res.sendStatus(200)
           }
 
           const result = await querySheet({
-            action: 'countByDate',
+            action: 'countByDateReceipt',
             employeeCode: state.employeeCode,
             date: dateText
           })
@@ -528,24 +660,23 @@ app.post('/webhook', async (req, res) => {
             event.replyToken,
             `📅 วันที่: ${dateText}
 👤 รหัสพนักงาน: ${state.employeeCode}
-📌 มีทั้งหมด: ${result.count || 0} รายการ`
+📌 มีทั้งหมด: ${result.count || 0} ใบเสร็จ`
           )
 
           resetState(userId)
           return res.sendStatus(200)
         }
 
-        // fallback
-        await reply(event.replyToken, 'พิมพ์ "ค้น" เพื่อเริ่มค้นหาใหม่ได้เลยครับ')
+        await reply(event.replyToken, 'พิมพ์ "ค้นหา" เพื่อเริ่มค้นหาใหม่ได้เลยครับ')
         return res.sendStatus(200)
       }
 
-      // ================== IDLE MODE ==================
+      // ================== IDLE ==================
       await reply(
         event.replyToken,
         `พิมพ์คำสั่งได้ 2 แบบครับ:
-🟦 "ส่งเอกสาร"
-🟩 "ค้น"
+🧾 "ส่งเอกสาร"
+🔎 "ค้นหา"
 
 หรือพิมพ์ "ทำไง" เพื่อดูวิธีใช้งาน`
       )
@@ -563,7 +694,7 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200)
       }
 
-      // timeout check
+      // timeout
       if (isSessionExpired(state)) {
         resetState(userId)
         await reply(event.replyToken, '⏱️ หมดเวลาแล้วครับ (เกิน 1 นาที)\nกรุณาเริ่มใหม่โดยพิมพ์ "ส่งเอกสาร"')
@@ -602,40 +733,52 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200)
       }
 
-      // 2.1) ตรวจรูปแบบเอกสาร
-      if (!isValidDocumentFormat(ocrText)) {
+      // 3) เช็ครูปแบบใบเสร็จ
+      if (!isAsokeReceipt(ocrText)) {
         await reply(
           event.replyToken,
-          '❌ รูปนี้ไม่ใช่เอกสารรูปแบบที่รองรับครับ\nกรุณาส่งรูปเอกสารตามแบบฟอร์มที่กำหนด 📄'
+          '❌ รูปนี้ไม่ใช่ใบเสร็จ Asoke Skin Hospital ที่รองรับครับ\nกรุณาส่งใบเสร็จตามแบบฟอร์ม (ต้องมี Receipt / Asoke Skin Hospital / BN)'
         )
         return res.sendStatus(200)
       }
 
-      // 3) parse
-      const parsed = parseOcrText(ocrText)
+      // 4) parse
+      const parsed = parseReceiptOcr(ocrText)
       parsed.employeeCode = state.employeeCode
 
-      console.log('PARSED:', parsed)
+      // กันกรณี BN หาย
+      if (!parsed.bn) {
+        await reply(
+          event.replyToken,
+          '❌ อ่าน BN ไม่ได้ครับ\nกรุณาถ่ายให้เห็นมุมขวาบนชัด ๆ (ตรง BN) แล้วส่งใหม่'
+        )
+        return res.sendStatus(200)
+      }
 
-      // 4) ส่งเข้า Google Sheet
+      // 5) ส่งเข้า Google Sheet
       await sendToSheet(parsed)
 
-      // 5) นับจำนวนรูป
+      // 6) นับรูป
       state.imagesCount += 1
       touch(state)
 
-      // 6) reply กลับ LINE
       await reply(
         event.replyToken,
-        `✅ บันทึกเรียบร้อย (${state.imagesCount}/${MAX_IMAGES_PER_SESSION})
-👤 รหัสพนักงาน: ${parsed.employeeCode}
-📄 เลขที่: ${parsed.docNo || '-'}
-📅 วันที่: ${parsed.date || '-'}
+        `✅ บันทึกใบเสร็จเรียบร้อย (${state.imagesCount}/${MAX_IMAGES_PER_SESSION})
 
-${state.imagesCount < MAX_IMAGES_PER_SESSION ? 'ส่งรูปถัดไปได้เลยครับ 📄 (หรือพิมพ์ "ยกเลิก")' : 'ครบ 2 รูปแล้ว ระบบจบรายการให้ครับ'}`
+👤 รหัสพนักงาน: ${parsed.employeeCode}
+🧾 BN: ${parsed.bn || '-'}
+👤 Name: ${parsed.name || '-'}
+🏥 HN: ${parsed.hn || '-'}
+📅 Date: ${parsed.dateText || '-'}
+💳 Payment: ${parsed.paymentType || '-'}
+💰 Total: ${parsed.total || '-'}
+
+${state.imagesCount < MAX_IMAGES_PER_SESSION
+          ? 'ส่งรูปถัดไปได้เลยครับ 🧾 (หรือพิมพ์ "ยกเลิก")'
+          : 'ครบ 2 รูปแล้ว ระบบจบรายการให้ครับ'}`
       )
 
-      // 7) reset เมื่อครบ 2 รูป
       if (state.imagesCount >= MAX_IMAGES_PER_SESSION) {
         resetState(userId)
       }
