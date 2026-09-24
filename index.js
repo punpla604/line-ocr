@@ -29,13 +29,14 @@ function defaultState() {
     mode: 'idle',
     step: 'idle',
 
-    employeeCode: '',
-
     // upload
+    employeeCode: '',
     waitingSince: null,
 
     // search
     searchType: '',
+    searchMonth: '',
+    searchYear: '',
     searchWaitingSince: null
   }
 }
@@ -50,9 +51,7 @@ function getState(userId) {
 
 function resetState(userId) {
   const state = defaultState()
-
   userState.set(userId, state)
-
   return state
 }
 
@@ -132,6 +131,52 @@ function isExpired(ts, ms) {
 }
 
 // ==================================================
+// FORMAT NUMBER
+// ==================================================
+
+function formatNumber(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+    return '0'
+  }
+
+  const text = String(value)
+    .replace(/,/g, '')
+    .trim()
+
+  const num = Number(text)
+
+  if (Number.isNaN(num)) {
+    return String(value)
+  }
+
+  return num.toLocaleString('en-US')
+}
+
+// ==================================================
+// FORMAT SEARCH RESULT
+// ==================================================
+
+function formatResultItem(d, index) {
+  return `🧾 รายการที่ ${index + 1}
+
+BN: ${d.bn || '-'}
+HN: ${d.hn || '-'}
+Name: ${d.name || '-'}
+Date: ${d.dateText || d.dateShort || '-'}
+
+Payment: ${d.paymentType || '-'}
+
+Total: ${formatNumber(d.total)}
+Doctor Fee: ${formatNumber(d.doctorFee)}
+Hospital & Nursing: ${formatNumber(d.hospitalNursing)}
+Other: ${formatNumber(d.other)}`
+}
+
+// ==================================================
 // LINE REPLY
 // ==================================================
 
@@ -140,7 +185,6 @@ async function reply(replyToken, text) {
     'https://api.line.me/v2/bot/message/reply',
     {
       replyToken,
-
       messages: [
         {
           type: 'text',
@@ -153,7 +197,6 @@ async function reply(replyToken, text) {
         Authorization: `Bearer ${LINE_TOKEN}`,
         'Content-Type': 'application/json'
       },
-
       timeout: 15000
     }
   )
@@ -198,7 +241,9 @@ async function querySheet(params = {}) {
     console.log('==============================')
 
     return res.data
+
   } catch (err) {
+
     console.error('==============================')
     console.error('SHEET QUERY ERROR')
 
@@ -213,6 +258,49 @@ async function querySheet(params = {}) {
 
     throw err
   }
+}
+
+// ==================================================
+// VALIDATE MONTH
+// ==================================================
+
+function isValidMonth(text) {
+  return /^(0[1-9]|1[0-2])$/.test(text)
+}
+
+// ==================================================
+// VALIDATE YEAR
+// ==================================================
+
+function isValidYear(text) {
+  return /^\d{4}$/.test(text)
+}
+
+// ==================================================
+// VALIDATE DATE
+// ==================================================
+
+function isValidDate(text) {
+  const dateRegex =
+    /^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/
+
+  if (!dateRegex.test(text)) {
+    return false
+  }
+
+  const [day, month, year] = text.split('/').map(Number)
+
+  const date = new Date(
+    year,
+    month - 1,
+    day
+  )
+
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  )
 }
 
 // ==================================================
@@ -262,7 +350,7 @@ app.post('/webhook', async (req, res) => {
           )
         ) {
 
-          state = resetState(userId)
+          resetState(userId)
 
           await reply(
             event.replyToken,
@@ -289,7 +377,7 @@ app.post('/webhook', async (req, res) => {
           )
         ) {
 
-          state = resetState(userId)
+          resetState(userId)
 
           await reply(
             event.replyToken,
@@ -349,15 +437,21 @@ app.post('/webhook', async (req, res) => {
 
 1) พิมพ์ "ค้นหา"
 2) ใส่รหัสพนักงาน
-3) เลือกประเภทการค้นหา
+3) เลือกเดือน
+4) เลือกปี
+5) เลือกประเภท
+
+ประเภทค้นหา:
 
 1) BN
 2) HN
 3) NAME
 4) DATE
 
-ตัวอย่างวันที่:
+DATE ตัวอย่าง:
 11/02/2026
+
+สามารถพบได้หลายรายการ
 
 พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน`
         )
@@ -410,9 +504,9 @@ app.post('/webhook', async (req, res) => {
 
       if (state.mode === 'upload') {
 
-        // ----------------------------------------------
-        // employee code
-        // ----------------------------------------------
+        // ==================================================
+        // EMPLOYEE CODE
+        // ==================================================
 
         if (
           state.step === 'waitingEmployeeCode'
@@ -443,9 +537,9 @@ app.post('/webhook', async (req, res) => {
           return res.sendStatus(200)
         }
 
-        // ----------------------------------------------
-        // waiting image
-        // ----------------------------------------------
+        // ==================================================
+        // WAITING IMAGE
+        // ==================================================
 
         if (
           state.step === 'waitingImage'
@@ -489,19 +583,105 @@ app.post('/webhook', async (req, res) => {
           }
 
           state.employeeCode = code
-          state.step = 'chooseSearchType'
+
+          // ขั้นต่อไป = เลือกเดือน
+          state.step = 'waitingSearchMonth'
           state.searchWaitingSince = Date.now()
 
           await reply(
             event.replyToken,
             `โอเคครับ 👤 ${code}
 
+กรุณาเลือกเดือนที่ต้องการค้นหา
+
+พิมพ์เลขเดือน 01 - 12
+
+ตัวอย่าง:
+02 = กุมภาพันธ์
+11 = พฤศจิกายน`
+          )
+
+          return res.sendStatus(200)
+        }
+
+        // ==================================================
+        // SEARCH MONTH
+        // ==================================================
+
+        if (
+          state.step === 'waitingSearchMonth'
+        ) {
+
+          const month = text.trim()
+
+          if (!isValidMonth(month)) {
+
+            await reply(
+              event.replyToken,
+              '❌ เดือนต้องเป็น 01 ถึง 12 ครับ\nตัวอย่าง 02 หรือ 11\nหรือพิมพ์ "ยกเลิก"'
+            )
+
+            return res.sendStatus(200)
+          }
+
+          state.searchMonth = month
+
+          // ขั้นต่อไป = เลือกปี
+          state.step = 'waitingSearchYear'
+          state.searchWaitingSince = Date.now()
+
+          await reply(
+            event.replyToken,
+            `📅 เดือน ${month}
+
+กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+
+ตัวอย่าง:
+2026`
+          )
+
+          return res.sendStatus(200)
+        }
+
+        // ==================================================
+        // SEARCH YEAR
+        // ==================================================
+
+        if (
+          state.step === 'waitingSearchYear'
+        ) {
+
+          const year = text.trim()
+
+          if (!isValidYear(year)) {
+
+            await reply(
+              event.replyToken,
+              '❌ ปีต้องเป็น ค.ศ. 4 หลักครับ\nตัวอย่าง 2026\nหรือพิมพ์ "ยกเลิก"'
+            )
+
+            return res.sendStatus(200)
+          }
+
+          state.searchYear = year
+
+          // ขั้นต่อไป = เลือกประเภท
+          state.step = 'chooseSearchType'
+          state.searchWaitingSince = Date.now()
+
+          await reply(
+            event.replyToken,
+            `📅 ช่วงค้นหา
+
+เดือน: ${state.searchMonth}
+ปี: ${state.searchYear}
+
 เลือกประเภทค้นหา (พิมพ์เลข):
 
 1) BN
 2) HN
 3) NAME
-4) DATE (11/02/2026)`
+4) DATE`
           )
 
           return res.sendStatus(200)
@@ -535,30 +715,42 @@ app.post('/webhook', async (req, res) => {
           }
 
           state.searchType = map[t]
+
           state.step = 'waitingSearchValue'
           state.searchWaitingSince = Date.now()
 
           let hint = ''
 
           if (state.searchType === 'BN') {
-            hint = 'พิมพ์เลข BN เช่น L69-01-003-761'
+            hint =
+              'พิมพ์เลข BN เช่น L69-01-003-761'
           }
 
           if (state.searchType === 'HN') {
-            hint = 'พิมพ์เลข HN เช่น 01-01-26-047'
+            hint =
+              'พิมพ์เลข HN เช่น 01-01-26-047'
           }
 
           if (state.searchType === 'NAME') {
-            hint = 'พิมพ์ชื่อคนไข้ เช่น Pun Kung'
+            hint =
+              'พิมพ์ชื่อคนไข้ เช่น Pun Kung'
           }
 
           if (state.searchType === 'DATE') {
-            hint = 'พิมพ์วันที่รูปแบบ 11/02/2026'
+            hint =
+              'พิมพ์วันที่รูปแบบ DD/MM/YYYY เช่น 11/02/2026'
           }
 
           await reply(
             event.replyToken,
-            `พิมพ์ค่าที่ต้องการค้นหาได้เลยครับ\n${hint}`
+            `🔎 ประเภท: ${state.searchType}
+
+เดือน: ${state.searchMonth}
+ปี: ${state.searchYear}
+
+${hint}
+
+พิมพ์ค่าที่ต้องการค้นหาได้เลยครับ`
           )
 
           return res.sendStatus(200)
@@ -576,6 +768,12 @@ app.post('/webhook', async (req, res) => {
 
           const employeeCode =
             state.employeeCode
+
+          const month =
+            state.searchMonth
+
+          const year =
+            state.searchYear
 
           if (!value) {
 
@@ -595,13 +793,7 @@ app.post('/webhook', async (req, res) => {
             state.searchType === 'DATE'
           ) {
 
-            // FIX:
-            // ของเดิมเป็น /^\d{2}**\\/**...
-            // ซึ่งผิด syntax
-            const dateRegex =
-              /^\d{2}\/\d{2}\/\d{4}$/
-
-            if (!dateRegex.test(value)) {
+            if (!isValidDate(value)) {
 
               await reply(
                 event.replyToken,
@@ -610,6 +802,45 @@ app.post('/webhook', async (req, res) => {
 
               return res.sendStatus(200)
             }
+
+            // ตรวจสอบว่า DATE อยู่ในเดือน/ปีที่เลือกหรือไม่
+            const [
+              day,
+              dateMonth,
+              dateYear
+            ] = value.split('/')
+
+            if (
+              dateMonth !== month ||
+              dateYear !== year
+            ) {
+
+              await reply(
+                event.replyToken,
+                `❌ วันที่ไม่ตรงกับช่วงที่เลือกครับ
+
+คุณเลือก:
+เดือน ${month}
+ปี ${year}
+
+แต่วันที่ที่พิมพ์คือ:
+${value}
+
+กรุณาพิมพ์วันที่ที่อยู่ในเดือน ${month}/${year} ครับ`
+              )
+
+              return res.sendStatus(200)
+            }
+          }
+
+          // ==================================================
+          // COMMON SEARCH PARAMS
+          // ==================================================
+
+          const baseParams = {
+            employeeCode,
+            month,
+            year
           }
 
           // ==================================================
@@ -624,6 +855,8 @@ app.post('/webhook', async (req, res) => {
               'SEARCH BN:',
               {
                 employeeCode,
+                month,
+                year,
                 value
               }
             )
@@ -631,7 +864,7 @@ app.post('/webhook', async (req, res) => {
             const result =
               await querySheet({
                 action: 'findByBN',
-                employeeCode: employeeCode,
+                ...baseParams,
                 bn: value
               })
 
@@ -642,40 +875,57 @@ app.post('/webhook', async (req, res) => {
 
             resetState(userId)
 
+            const list =
+              Array.isArray(result?.list)
+                ? result.list
+                : []
+
+            // รองรับ API รุ่นเก่า
             if (
-              !result ||
-              result.found !== true
+              list.length === 0 &&
+              result?.found === true &&
+              result?.data
             ) {
+              list.push(result.data)
+            }
+
+            if (list.length === 0) {
 
               await reply(
                 event.replyToken,
                 `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
+Month: ${month}
+Year: ${year}
 BN: ${value}
 
-ลองตรวจสอบตัวสะกดหรือ BN อีกครั้งครับ`
+ลองตรวจสอบข้อมูลอีกครั้งครับ`
               )
 
               return res.sendStatus(200)
             }
 
-            const d =
-              result.data || {}
+            // BN แสดงทุกผลที่พบ
+            const messages =
+              list
+                .map((d, i) =>
+                  formatResultItem(d, i)
+                )
+                .join(
+                  '\n\n--------------------\n\n'
+                )
 
             await reply(
               event.replyToken,
-              `🧾 พบใบเสร็จ 1 รายการ
+              `🔎 พบทั้งหมด ${list.length} รายการ
 
-BN: ${d.bn || '-'}
-HN: ${d.hn || '-'}
-Name: ${d.name || '-'}
-Date: ${d.dateText || '-'}
-Payment: ${d.paymentType || '-'}
-Total: ${d.total || '-'}
-Doctor Fee: ${d.doctorFee || '-'}
-Hospital & Nursing: ${d.hospitalNursing || '-'}
-Other: ${d.other || '-'}
+Employee: ${employeeCode}
+Month: ${month}
+Year: ${year}
+BN: ${value}
+
+${messages}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
             )
@@ -695,6 +945,8 @@ Other: ${d.other || '-'}
               'SEARCH HN:',
               {
                 employeeCode,
+                month,
+                year,
                 value
               }
             )
@@ -702,7 +954,7 @@ Other: ${d.other || '-'}
             const result =
               await querySheet({
                 action: 'findByHN',
-                employeeCode: employeeCode,
+                ...baseParams,
                 hn: value
               })
 
@@ -725,30 +977,40 @@ Other: ${d.other || '-'}
                 `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
+Month: ${month}
+Year: ${year}
 HN: ${value}`
               )
 
               return res.sendStatus(200)
             }
 
+            // HN แสดงสูงสุด 10
             const preview =
               list
                 .slice(0, 10)
-                .map(
-                  (r, i) =>
-                    `${i + 1}) ${r.dateShort || '-'} | BN ${r.bn || '-'} | Total ${r.total || '-'}`
+                .map((r, i) =>
+                  formatResultItem(r, i)
                 )
-                .join('\n')
+                .join(
+                  '\n\n--------------------\n\n'
+                )
+
+            const moreText =
+              list.length > 10
+                ? `\n\nแสดง 10 จาก ${list.length} รายการ`
+                : ''
 
             await reply(
               event.replyToken,
               `🔎 พบทั้งหมด ${list.length} รายการ
 
+Employee: ${employeeCode}
+Month: ${month}
+Year: ${year}
 HN: ${value}
 
-${preview}
-
-(แสดงสูงสุด 10 รายการ)
+${preview}${moreText}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
             )
@@ -768,6 +1030,8 @@ ${preview}
               'SEARCH NAME:',
               {
                 employeeCode,
+                month,
+                year,
                 value
               }
             )
@@ -775,7 +1039,7 @@ ${preview}
             const result =
               await querySheet({
                 action: 'findByName',
-                employeeCode: employeeCode,
+                ...baseParams,
                 name: value
               })
 
@@ -798,30 +1062,40 @@ ${preview}
                 `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
+Month: ${month}
+Year: ${year}
 NAME: ${value}`
               )
 
               return res.sendStatus(200)
             }
 
+            // NAME แสดงสูงสุด 10
             const preview =
               list
                 .slice(0, 10)
-                .map(
-                  (r, i) =>
-                    `${i + 1}) ${r.dateShort || '-'} | BN ${r.bn || '-'} | Total ${r.total || '-'}`
+                .map((r, i) =>
+                  formatResultItem(r, i)
                 )
-                .join('\n')
+                .join(
+                  '\n\n--------------------\n\n'
+                )
+
+            const moreText =
+              list.length > 10
+                ? `\n\nแสดง 10 จาก ${list.length} รายการ`
+                : ''
 
             await reply(
               event.replyToken,
               `🔎 พบทั้งหมด ${list.length} รายการ
 
+Employee: ${employeeCode}
+Month: ${month}
+Year: ${year}
 NAME: ${value}
 
-${preview}
-
-(แสดงสูงสุด 10 รายการ)
+${preview}${moreText}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
             )
@@ -841,14 +1115,16 @@ ${preview}
               'SEARCH DATE:',
               {
                 employeeCode,
+                month,
+                year,
                 value
               }
             )
 
             const result =
               await querySheet({
-                action: 'countByDateReceipt',
-                employeeCode: employeeCode,
+                action: 'findByDate',
+                ...baseParams,
                 date: value
               })
 
@@ -859,13 +1135,46 @@ ${preview}
 
             resetState(userId)
 
+            const list =
+              Array.isArray(result?.list)
+                ? result.list
+                : []
+
+            if (list.length === 0) {
+
+              await reply(
+                event.replyToken,
+                `❌ ไม่พบข้อมูลครับ 😅
+
+Employee: ${employeeCode}
+Month: ${month}
+Year: ${year}
+DATE: ${value}`
+              )
+
+              return res.sendStatus(200)
+            }
+
+            // DATE แสดงทุกผลที่พบ
+            const messages =
+              list
+                .map((d, i) =>
+                  formatResultItem(d, i)
+                )
+                .join(
+                  '\n\n--------------------\n\n'
+                )
+
             await reply(
               event.replyToken,
-              `📅 วันที่ ${value}
+              `🔎 พบทั้งหมด ${list.length} รายการ
 
-พนักงาน ${employeeCode}
+Employee: ${employeeCode}
+Month: ${month}
+Year: ${year}
+DATE: ${value}
 
-มีทั้งหมด ${result?.count || 0} รายการครับ
+${messages}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
             )
@@ -945,10 +1254,8 @@ ${preview}
               Authorization:
                 `Bearer ${LINE_TOKEN}`
             },
-
             responseType:
               'arraybuffer',
-
             timeout:
               20000
           }
@@ -1054,11 +1361,11 @@ ${preview}
 BN: ${parsed.bn || '-'}
 Date: ${parsed.receiptDateRaw || '-'}
 HN: ${parsed.hn || '-'}
-Total: ${parsed.total || '-'}
+Total: ${formatNumber(parsed.total)}
 
-Doctor Fee: ${parsed.doctorFee || '-'}
-Hospital & Nursing: ${parsed.hospitalNursing || '-'}
-Other: ${parsed.other || '-'}
+Doctor Fee: ${formatNumber(parsed.doctorFee)}
+Hospital & Nursing: ${formatNumber(parsed.hospitalNursing)}
+Other: ${formatNumber(parsed.other)}
 
 ส่งรูปต่อไปได้เลย 🧾
 
@@ -1087,13 +1394,15 @@ Other: ${parsed.other || '-'}
       '=============================='
     )
 
-    // พยายามแจ้งผู้ใช้
     try {
+
       await reply(
         event.replyToken,
         '⚠️ ระบบค้นหาหรือประมวลผลเกิดข้อผิดพลาดครับ\nกรุณาลองใหม่อีกครั้ง'
       )
+
     } catch (replyErr) {
+
       console.error(
         'LINE REPLY ERROR:',
         replyErr.response?.data ||
@@ -1117,6 +1426,4 @@ app.listen(
     )
   }
 )
-
-
 
