@@ -720,12 +720,27 @@ ${preview}
       }
 
       // ================== Parse ==================
+      const parsed = parseReceipt(ocrText)
 
-      const parsed =
-        parseReceipt(ocrText)
+      parsed.employeeCode = state.employeeCode
 
-      parsed.employeeCode =
-        state.employeeCode
+      // ==========================================
+      // 3 หมวดค่าใช้จ่าย
+      // ==========================================
+
+      // Doctor Fee
+      parsed.doctorFee = parsed.doctorFee || ''
+
+      // Hospital & Nursing
+      parsed.hospitalNursing = parsed.hospitalNursing || ''
+
+      // รายการอื่น ๆ
+      parsed.other = parsed.other || ''
+
+      // ==========================================
+      // save (ทีละ 1 รูป)
+      // ==========================================
+
 
       // ================== Save ==================
 
