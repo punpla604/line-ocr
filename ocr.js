@@ -3,7 +3,9 @@ const FormData = require('form-data')
 
 const OCRSPACE_KEY = process.env.OCRSPACE_KEY
 
-// ================== OCR ==================
+// ==================================================
+// OCR
+// ==================================================
 
 async function ocrImage(imageBuffer) {
   if (!OCRSPACE_KEY) {
@@ -16,8 +18,9 @@ async function ocrImage(imageBuffer) {
   form.append('language', 'eng')
   form.append('OCREngine', '2')
   form.append('scale', 'true')
+  form.append('isTable', 'true')
   form.append('file', imageBuffer, {
-    filename: 'image.jpg'
+    filename: 'receipt.jpg'
   })
 
   const res = await axios.post(
@@ -29,10 +32,19 @@ async function ocrImage(imageBuffer) {
     }
   )
 
+  if (res.data?.IsErroredOnProcessing) {
+    throw new Error(
+      res.data?.ErrorMessage?.join?.(', ') ||
+      'OCR processing failed'
+    )
+  }
+
   return res.data?.ParsedResults?.[0]?.ParsedText || ''
 }
 
-// ================== Receipt format check ==================
+// ==================================================
+// Receipt format check
+// ==================================================
 
 function isOurReceipt(ocrText) {
   const t = (ocrText || '')
@@ -47,300 +59,494 @@ function isOurReceipt(ocrText) {
   return mustHave.every(k => t.includes(k))
 }
 
-// ================== Money helper ==================
+// ==================================================
+// Helpers
+// ==================================================
 
-function findMoney(text) {
-  const m = (text || '').match(
-    /([0-9]{1,3}(?:,[0-9]{3})\.[0-9]{2})/
-  )
-
-  return m ? m[1] : ''
+function normalizeSpaces(text) {
+  return (text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
-// ================== Receipt parser ==================
+function cleanMoney(text) {
+  if (!text) return ''
+
+  return text
+    .replace(/\s+/g, '')
+    .replace(/[Oo]/g, '0')
+    .replace(/[Il]/g, '1')
+}
+
+function isMoney(text) {
+  const t = cleanMoney(text)
+
+  return /^\d{1,3}(?:,\d{3})*\.\d{2}$/.test(t)
+}
+
+function extractMoney(text) {
+  if (!text) return ''
+
+  const m = text.match(
+    /\d{1,3}(?:,\d{3})*\.\d{2}/
+  )
+
+  return m ? m[0] : ''
+}
+
+function isDash(text) {
+  return /^[-–—]+$/.test(
+    (text || '').trim()
+  )
+}
+
+// ==================================================
+// Date
+// ==================================================
+
+const MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December'
+]
+
+function parseDateStrict(lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    if (!/^date\b/i.test(line)) {
+      continue
+    }
+
+    const m = line.match(
+      /^Date\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:\s+Time\s+(\d{2}:\d{2}:\d{2}))?/i
+    )
+
+    if (!m) {
+      continue
+    }
+
+    const day = m[1]
+    const month = m[2]
+    const year = m[3]
+    const time = m[4] || ''
+
+    const validMonth = MONTHS.find(
+      x => x.toLowerCase() === month.toLowerCase()
+    )
+
+    // ไม่เดาเดือน
+    if (!validMonth) {
+      return {
+        date: '',
+        time
+      }
+    }
+
+    const dayNum = Number(day)
+    const yearNum = Number(year)
+
+    if (
+      dayNum < 1 ||
+      dayNum > 31 ||
+      yearNum < 1900 ||
+      yearNum > 2100
+    ) {
+      return {
+        date: '',
+        time
+      }
+    }
+
+    return {
+      date: `${day} ${validMonth} ${year}`,
+      time
+    }
+  }
+
+  return {
+    date: '',
+    time: ''
+  }
+}
+
+// ==================================================
+// BN
+// ==================================================
+
+function parseBN(lines) {
+  for (const line of lines) {
+    const m = line.match(
+      /\bBN\s*[:.]?\s*([A-Z0-9-]+)/i
+    )
+
+    if (m) {
+      return m[1].trim()
+    }
+  }
+
+  return ''
+}
+
+// ==================================================
+// HN
+// ==================================================
+
+function parseHN(lines) {
+  for (const line of lines) {
+    const m = line.match(
+      /\bHN\s*[:.]?\s*([0-9-]+)/i
+    )
+
+    if (m) {
+      return m[1].trim()
+    }
+  }
+
+  return ''
+}
+
+// ==================================================
+// Name
+// ==================================================
+
+function parseName(lines) {
+  const idx = lines.findIndex(
+    l => /^name\b/i.test(l)
+  )
+
+  if (idx === -1) {
+    return ''
+  }
+
+  const current = lines[idx]
+
+  const sameLine = current.match(
+    /^Name\s*[:.]?\s*(.+)$/i
+  )
+
+  if (sameLine && sameLine[1].trim()) {
+    return sameLine[1].trim()
+  }
+
+  const next = lines[idx + 1] || ''
+  const next2 = lines[idx + 2] || ''
+
+  if (/^(mr|mrs|ms)\.?$/i.test(next)) {
+    return next2
+  }
+
+  return next
+}
+
+// ==================================================
+// Payment
+// ==================================================
+
+function parsePaymentType(lines) {
+  const paymentKeywords = [
+    'credit card',
+    'creditcard',
+    'cash',
+    'bank transfer',
+    'transfer'
+  ]
+
+  for (const line of lines) {
+    const normalized = normalizeSpaces(line)
+    const lower = normalized.toLowerCase()
+
+    for (const keyword of paymentKeywords) {
+      if (lower.includes(keyword)) {
+        if (
+          keyword === 'creditcard' ||
+          keyword === 'credit card'
+        ) {
+          return 'Credit Card'
+        }
+
+        if (keyword === 'bank transfer') {
+          return 'Bank Transfer'
+        }
+
+        if (keyword === 'transfer') {
+          return 'Transfer'
+        }
+
+        if (keyword === 'cash') {
+          return 'Cash'
+        }
+      }
+    }
+  }
+
+  return ''
+}
+
+// ==================================================
+// Table
+// ==================================================
+
+function parseItems(lines) {
+  const items = []
+
+  const startIdx = lines.findIndex(
+    line =>
+      /\bdescription\b/i.test(line) &&
+      /\bbaht\b/i.test(line)
+  )
+
+  if (startIdx === -1) {
+    return items
+  }
+
+  const tableLines = []
+
+  for (
+    let i = startIdx + 1;
+    i < lines.length;
+    i++
+  ) {
+    const line = normalizeSpaces(lines[i])
+
+    if (!line) {
+      continue
+    }
+
+    // Summary เริ่มแล้ว
+    if (/^vat\b/i.test(line)) {
+      break
+    }
+
+    if (/^total\b/i.test(line)) {
+      break
+    }
+
+    // Credit Card ไม่ใช่ item
+    if (/credit\s*card/i.test(line)) {
+      continue
+    }
+
+    tableLines.push(line)
+  }
+
+  let currentItem = null
+
+  for (const line of tableLines) {
+    const text = normalizeSpaces(line)
+
+    // ------------------------------------------
+    // 1 Description 1,000.00
+    // ------------------------------------------
+
+    const inline = text.match(
+      /^(\d+)\s+(.+?)\s+(-|\d{1,3}(?:,\d{3})*\.\d{2})$/
+    )
+
+    if (inline) {
+      const no = inline[1]
+      const desc = inline[2].trim()
+      const price = inline[3]
+
+      items.push({
+        no,
+        desc,
+        price: isDash(price)
+          ? null
+          : cleanMoney(price)
+      })
+
+      currentItem = null
+      continue
+    }
+
+    // ------------------------------------------
+    // เลขลำดับ
+    // ------------------------------------------
+
+    if (/^\d+$/.test(text)) {
+      currentItem = {
+        no: text,
+        desc: '',
+        price: null
+      }
+
+      items.push(currentItem)
+
+      continue
+    }
+
+    // ------------------------------------------
+    // ราคา
+    // ------------------------------------------
+
+    if (
+      isMoney(text) ||
+      isDash(text)
+    ) {
+      if (currentItem) {
+        currentItem.price =
+          isDash(text)
+            ? null
+            : cleanMoney(text)
+
+        currentItem = null
+      }
+
+      continue
+    }
+
+    // ------------------------------------------
+    // Description
+    // ------------------------------------------
+
+    if (currentItem) {
+      if (currentItem.desc) {
+        currentItem.desc += ' ' + text
+      } else {
+        currentItem.desc = text
+      }
+    }
+  }
+
+  return items
+}
+
+// ==================================================
+// VAT
+// ==================================================
+
+function parseVat(lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = normalizeSpaces(lines[i])
+
+    if (!/^vat\b/i.test(line)) {
+      continue
+    }
+
+    // VAT 210.00
+    const sameLine = extractMoney(line)
+
+    if (sameLine) {
+      return cleanMoney(sameLine)
+    }
+
+    // VAT
+    // 210.00
+    const next = lines[i + 1] || ''
+    const nextMoney = extractMoney(next)
+
+    if (nextMoney) {
+      return cleanMoney(nextMoney)
+    }
+  }
+
+  return ''
+}
+
+// ==================================================
+// Total
+// ==================================================
+
+function parseTotal(lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = normalizeSpaces(lines[i])
+
+    if (!/^total\b/i.test(line)) {
+      continue
+    }
+
+    // Total 3,210.00
+    const sameLine = extractMoney(line)
+
+    if (sameLine) {
+      return cleanMoney(sameLine)
+    }
+
+    // Total
+    // 3,210.00
+    const next = lines[i + 1] || ''
+    const nextMoney = extractMoney(next)
+
+    if (nextMoney) {
+      return cleanMoney(nextMoney)
+    }
+  }
+
+  return ''
+}
+
+// ==================================================
+// Payment amount
+// ==================================================
+
+function parsePaymentAmount(lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = normalizeSpaces(lines[i])
+
+    if (!/credit\s*card/i.test(line)) {
+      continue
+    }
+
+    const sameLine = extractMoney(line)
+
+    if (sameLine) {
+      return cleanMoney(sameLine)
+    }
+
+    const next = lines[i + 1] || ''
+    const nextMoney = extractMoney(next)
+
+    if (nextMoney) {
+      return cleanMoney(nextMoney)
+    }
+  }
+
+  return ''
+}
+
+// ==================================================
+// Receipt parser
+// ==================================================
 
 function parseReceipt(ocrText) {
   const raw = ocrText || ''
 
   const lines = raw
-    .split('\n')
-    .map(l => l.trim())
+    .split(/\r?\n/)
+    .map(line => normalizeSpaces(line))
     .filter(Boolean)
 
-  const findLineIncludes = (keyword) => {
-    const k = keyword.toLowerCase()
+  const bn = parseBN(lines)
+  const hn = parseHN(lines)
+  const patientName = parseName(lines)
 
-    return (
-      lines.find(l =>
-        l.toLowerCase().includes(k)
-      ) || ''
-    )
-  }
+  const dateResult = parseDateStrict(lines)
 
-  // ================== BN ==================
+  const paymentType =
+    parsePaymentType(lines)
 
-  let bn = ''
+  const items =
+    parseItems(lines)
 
-  {
-    const bnLine = findLineIncludes('bn')
+  const vat =
+    parseVat(lines)
 
-    const m = bnLine.match(
-      /BN\.?\s*([A-Z0-9-]+)/i
-    )
+  const total =
+    parseTotal(lines)
 
-    if (m) {
-      bn = m[1].trim()
-    }
-  }
-
-  // ================== HN ==================
-
-  let hn = ''
-
-  {
-    const hnLine = findLineIncludes('hn')
-
-    const m = hnLine.match(
-      /HN\.?\s*([0-9-]+)/i
-    )
-
-    if (m) {
-      hn = m[1].trim()
-    }
-  }
-
-  // ================== Date + Time ==================
-
-  let receiptDateRaw = ''
-  let timeText = ''
-
-  {
-    const idx = lines.findIndex(l =>
-      l.toLowerCase().startsWith('date')
-    )
-
-    if (idx !== -1) {
-      const line = lines[idx]
-
-      // Date 31 January 2026 Time 18:01:02
-      const mDateTime = line.match(
-        /Date\s+(.+?)\s+Time\s+([0-9]{2}:[0-9]{2}:[0-9]{2})/i
-      )
-
-      if (mDateTime) {
-        receiptDateRaw =
-          (mDateTime[1] || '').trim()
-
-        timeText =
-          (mDateTime[2] || '').trim()
-      } else {
-        const mDate = line.match(
-          /Date\s+(.+)/i
-        )
-
-        if (mDate) {
-          receiptDateRaw = mDate[1].trim()
-        }
-
-        const mTime = line.match(
-          /Time\s+([0-9]{2}:[0-9]{2}:[0-9]{2})/i
-        )
-
-        if (mTime) {
-          timeText = mTime[1].trim()
-        }
-      }
-    } else {
-      // fallback: หา line ที่มี date + time
-      const dtLine =
-        lines.find(l =>
-          l.toLowerCase().includes('date') &&
-          l.toLowerCase().includes('time')
-        ) || ''
-
-      const mTime = dtLine.match(
-        /Time\s+([0-9]{2}:[0-9]{2}:[0-9]{2})/i
-      )
-
-      if (mTime) {
-        timeText = mTime[1].trim()
-      }
-    }
-  }
-
-  // ================== Name ==================
-
-  let patientName = ''
-
-  {
-    const idx = lines.findIndex(l =>
-      l.toLowerCase().startsWith('name')
-    )
-
-    if (idx !== -1) {
-      const next = (lines[idx + 1] || '').trim()
-      const next2 = (lines[idx + 2] || '').trim()
-
-      if (/^(mr|ms|mrs)\.?$/i.test(next)) {
-        patientName = next2
-      } else {
-        const m = lines[idx].match(
-          /Name\s+(.+)/i
-        )
-
-        patientName = m
-          ? m[1].trim()
-          : next
-      }
-    }
-  }
-
-  // ================== Payment ==================
-
-  let paymentType = ''
-
-  {
-    const payLine =
-      findLineIncludes('type of payment')
-
-    const m = payLine.match(
-      /Type of Payment\s*:\s*(.+)/i
-    )
-
-    if (m) {
-      paymentType = m[1].trim()
-    }
-  }
-
-  // ================== VAT ==================
-
-  let vat = ''
-
-  {
-    const vatLine =
-      lines.find(l =>
-        l.toLowerCase().includes('vat')
-      ) || ''
-
-    const m = vatLine.match(
-      /([0-9]{1,3}(?:,[0-9]{3})\.[0-9]{2})/
-    )
-
-    if (m) {
-      vat = m[1]
-    }
-  }
-
-  // ================== Items ==================
-
-  const items = []
-
-  {
-    const startIdx = lines.findIndex(l =>
-      l.toLowerCase().includes('description')
-    )
-
-    const endIdx = lines.findIndex(l =>
-      /^(creditcard|total|signature|cashier|vat)/i.test(
-        l.trim()
-      )
-    )
-
-    if (startIdx !== -1) {
-      const tableLines = lines.slice(
-        startIdx + 1,
-        endIdx !== -1
-          ? endIdx
-          : startIdx + 80
-      )
-
-      const cleaned = tableLines
-        .map(l => l.trim())
-        .filter(Boolean)
-        .filter(l =>
-          !/^(no\.?|baht|anau)$/i.test(l)
-        )
-        .filter(l => !/^\d+$/.test(l))
-        .filter(l => !/^page/i.test(l))
-
-      const moneyRegex =
-        /^[0-9]{1,3}(?:,[0-9]{3})\.[0-9]{2}$/
-
-      const dashRegex = /^-+$/
-
-      const descList = []
-      const priceList = []
-
-      for (const l of cleaned) {
-        const s = l
-          .replace(/\s+/g, ' ')
-          .trim()
-
-        // ตัวเงินล้วน
-        if (moneyRegex.test(s)) {
-          priceList.push(s)
-          continue
-        }
-
-        // "-"
-        if (dashRegex.test(s)) {
-          priceList.push('-')
-          continue
-        }
-
-        // text + price
-        const mInline = s.match(
-          /(.+?)\s+([0-9]{1,3}(?:,[0-9]{3})\.[0-9]{2})$/
-        )
-
-        if (mInline) {
-          descList.push(
-            mInline[1].trim()
-          )
-
-          priceList.push(
-            mInline[2].trim()
-          )
-
-          continue
-        }
-
-        // text
-        descList.push(s)
-      }
-
-      const n = Math.min(
-        descList.length,
-        priceList.length
-      )
-
-      for (let i = 0; i < n; i++) {
-        const desc = descList[i]
-        const p = priceList[i]
-
-        items.push({
-          desc,
-          price: p === '-' ? null : p
-        })
-      }
-    }
-  }
-
-  // ================== Total ==================
-
-  let total = ''
-
-  {
-    const allMoney = lines
-      .map(l => findMoney(l))
-      .filter(Boolean)
-
-    if (allMoney.length > 0) {
-      total = allMoney[allMoney.length - 1]
-    }
-  }
-
-  // ================== Result ==================
+  // Parse เพื่อรองรับ Credit Card + amount
+  // แต่ยังไม่เพิ่ม field ใหม่ เพื่อไม่กระทบ Sheet
+  parsePaymentAmount(lines)
 
   return {
     timestamp: new Date().toISOString(),
@@ -348,10 +554,12 @@ function parseReceipt(ocrText) {
     receiptNo: bn,
 
     bn,
+
     hn,
 
-    receiptDateRaw,
-    timeText,
+    receiptDateRaw: dateResult.date,
+
+    timeText: dateResult.time,
 
     patientName,
 
@@ -366,6 +574,10 @@ function parseReceipt(ocrText) {
     raw
   }
 }
+
+// ==================================================
+// Export
+// ==================================================
 
 module.exports = {
   ocrImage,
