@@ -40,7 +40,10 @@ async function ocrImage(imageBuffer) {
     )
   }
 
-  return res.data?.ParsedResults?.[0]?.ParsedText || ''
+  return (
+    res.data?.ParsedResults?.[0]?.ParsedText ||
+    ''
+  )
 }
 
 // ==================================================
@@ -57,7 +60,9 @@ function isOurReceipt(ocrText) {
     'asoke skin hospital'
   ]
 
-  return mustHave.every(k => t.includes(k))
+  return mustHave.every(k =>
+    t.includes(k)
+  )
 }
 
 // ==================================================
@@ -73,7 +78,7 @@ function normalizeSpaces(text) {
 function cleanMoney(text) {
   if (!text) return ''
 
-  return text
+  return String(text)
     .replace(/\s+/g, '')
     .replace(/[Oo]/g, '0')
     .replace(/[Il]/g, '1')
@@ -88,7 +93,7 @@ function isMoney(text) {
 function extractMoney(text) {
   if (!text) return ''
 
-  const m = text.match(
+  const m = String(text).match(
     /\d{1,3}(?:,\d{3})*\.\d{2}/
   )
 
@@ -122,18 +127,53 @@ const MONTHS = [
 
 const OCR_MONTH_FIXES = {
   jandary: 'January',
+  janary: 'January',
+  janu ary: 'January',
+
   febuary: 'February',
   feburary: 'February',
+  febrary: 'February',
+
+  marchh: 'March',
+
+  aprill: 'April',
+
+  junee: 'June',
+
+  julyy: 'July',
+
   agust: 'August',
+  augst: 'August',
+
   septmber: 'September',
+  septemer: 'September',
+  septembr: 'September',
+
   octber: 'October',
+  octobr: 'October',
+
   novmber: 'November',
-  decmber: 'December'
+  novembr: 'November',
+
+  decmber: 'December',
+  decembr: 'December'
 }
 
 function parseDateStrict(lines) {
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeSpaces(lines[i])
+
+    /*
+      OCR มักอ่าน Date เป็น Dale
+
+      เราอนุญาตเฉพาะ:
+      Date/Dale + day + month + year
+
+      เช่น:
+      Dale 31 Jandary 2026 Time 18:01:02
+
+      ไม่มีการใช้ new Date() เดา
+    */
 
     const m = line.match(
       /^(?:Date|Dale)\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:\s+Time\s+(\d{2}:\d{2}:\d{2}))?/i
@@ -149,18 +189,21 @@ function parseDateStrict(lines) {
     const time = m[4] || ''
 
     const monthKey =
-      originalMonth.toLowerCase()
+      originalMonth
+        .toLowerCase()
+        .replace(/\s+/g, '')
 
     const correctedMonth =
       OCR_MONTH_FIXES[monthKey] ||
       originalMonth
 
-    const validMonth = MONTHS.find(
-      month =>
+    const validMonth =
+      MONTHS.find(month =>
         month.toLowerCase() ===
         correctedMonth.toLowerCase()
-    )
+      )
 
+    // ถ้าเดือนไม่รู้จัก -> ไม่เดา
     if (!validMonth) {
       return {
         date: '',
@@ -168,8 +211,11 @@ function parseDateStrict(lines) {
       }
     }
 
-    const dayNum = Number(day)
-    const yearNum = Number(year)
+    const dayNum =
+      Number(day)
+
+    const yearNum =
+      Number(year)
 
     if (
       dayNum < 1 ||
@@ -201,7 +247,8 @@ function parseDateStrict(lines) {
     }
 
     return {
-      date: `${day} ${validMonth} ${year}`,
+      date:
+        `${day} ${validMonth} ${year}`,
       time
     }
   }
@@ -253,28 +300,39 @@ function parseHN(lines) {
 // ==================================================
 
 function parseName(lines) {
-  const idx = lines.findIndex(
-    l => /^name\b/i.test(l)
-  )
+  const idx =
+    lines.findIndex(
+      l => /^name\b/i.test(l)
+    )
 
   if (idx === -1) {
     return ''
   }
 
-  const current = lines[idx]
+  const current =
+    lines[idx]
 
-  const sameLine = current.match(
-    /^Name\s*[:.]?\s*(.+)$/i
-  )
+  const sameLine =
+    current.match(
+      /^Name\s*[:.]?\s*(.+)$/i
+    )
 
-  if (sameLine && sameLine[1].trim()) {
+  if (
+    sameLine &&
+    sameLine[1].trim()
+  ) {
     return sameLine[1].trim()
   }
 
-  const next = lines[idx + 1] || ''
-  const next2 = lines[idx + 2] || ''
+  const next =
+    lines[idx + 1] || ''
 
-  if (/^(mr|mrs|ms)\.?$/i.test(next)) {
+  const next2 =
+    lines[idx + 2] || ''
+
+  if (
+    /^(mr|mrs|ms)\.?$/i.test(next)
+  ) {
     return next2
   }
 
@@ -289,14 +347,18 @@ function parsePaymentType(lines) {
   const paymentKeywords = [
     'credit card',
     'creditcard',
+    'credtcard',
     'cash',
     'bank transfer',
     'transfer'
   ]
 
   for (const line of lines) {
-    const normalized = normalizeSpaces(line)
-    const lower = normalized.toLowerCase()
+    const normalized =
+      normalizeSpaces(line)
+
+    const lower =
+      normalized.toLowerCase()
 
     for (const keyword of paymentKeywords) {
       if (!lower.includes(keyword)) {
@@ -305,20 +367,27 @@ function parsePaymentType(lines) {
 
       if (
         keyword === 'creditcard' ||
-        keyword === 'credit card'
+        keyword === 'credit card' ||
+        keyword === 'credtcard'
       ) {
         return 'Credit Card'
       }
 
-      if (keyword === 'bank transfer') {
+      if (
+        keyword === 'bank transfer'
+      ) {
         return 'Bank Transfer'
       }
 
-      if (keyword === 'transfer') {
+      if (
+        keyword === 'transfer'
+      ) {
         return 'Transfer'
       }
 
-      if (keyword === 'cash') {
+      if (
+        keyword === 'cash'
+      ) {
         return 'Cash'
       }
     }
@@ -334,11 +403,35 @@ function parsePaymentType(lines) {
 function parseItems(lines) {
   const items = []
 
-  const startIdx = lines.findIndex(
-    line =>
-      /\bdescription\b/i.test(line) &&
-      /\bbaht\b/i.test(line)
-  )
+  /*
+    OCR ตัวอย่าง:
+
+    No Description Baht
+    1 DOCTOR FEE
+    2 LASER THERAPY 7,560.00
+    3 LOCAL ANESTHESIA 500.00
+    4 LASER MACHINE SERVICES 300.00
+    HOSPITAL AND NURSING SERVICE (OPD) 250.00
+    6 Sylfirm 6,300.00
+
+    CreditCard 14,910.00
+    VAT ...
+    Total 14,910.00
+  */
+
+  const startIdx =
+    lines.findIndex(line => {
+      const t =
+        line.toLowerCase()
+
+      return (
+        (
+          t.includes('description') ||
+          t.includes('descriplion')
+        ) &&
+        t.includes('baht')
+      )
+    })
 
   if (startIdx === -1) {
     return items
@@ -351,22 +444,44 @@ function parseItems(lines) {
     i < lines.length;
     i++
   ) {
-    const line = normalizeSpaces(lines[i])
+    const line =
+      normalizeSpaces(lines[i])
 
     if (!line) {
       continue
     }
 
-    if (/^vat\b/i.test(line)) {
+    const lower =
+      line.toLowerCase()
+
+    // จบรายการก่อนถึงส่วน payment
+    if (
+      lower.includes('creditcard') ||
+      lower.includes('credit card') ||
+      lower.includes('credtcard')
+    ) {
       break
     }
 
-    if (/^total\b/i.test(line)) {
+    if (
+      /^vat\b/i.test(line) ||
+      lower.includes(' vat')
+    ) {
       break
     }
 
-    if (/credit\s*card/i.test(line)) {
-      continue
+    if (
+      /^total\b/i.test(line) ||
+      lower.includes(' total')
+    ) {
+      break
+    }
+
+    if (
+      lower.includes('signature') ||
+      lower.includes('cashier')
+    ) {
+      break
     }
 
     tableLines.push(line)
@@ -375,29 +490,53 @@ function parseItems(lines) {
   let currentItem = null
 
   for (const line of tableLines) {
-    const text = normalizeSpaces(line)
+    const text =
+      normalizeSpaces(line)
 
-    const inline = text.match(
-      /^(\d+)\s+(.+?)\s+(-|\d{1,3}(?:,\d{3})*\.\d{2})$/
-    )
+    if (!text) {
+      continue
+    }
+
+    // ------------------------------------------
+    // แบบ:
+    // 2 LASER THERAPY 7,560.00
+    // ------------------------------------------
+
+    const inline =
+      text.match(
+        /^(\d+)\s+(.+?)\s+(-|\d{1,3}(?:,\d{3})*\.\d{2})$/
+      )
 
     if (inline) {
-      const no = inline[1]
-      const desc = inline[2].trim()
-      const price = inline[3]
+      const no =
+        inline[1]
+
+      const desc =
+        inline[2].trim()
+
+      const price =
+        inline[3]
 
       items.push({
         no,
         desc,
-        price: isDash(price)
-          ? null
-          : cleanMoney(price)
+        price:
+          isDash(price)
+            ? null
+            : cleanMoney(price)
       })
 
       currentItem = null
 
       continue
     }
+
+    // ------------------------------------------
+    // แบบ:
+    // 1
+    // DOCTOR FEE
+    // 1,000.00
+    // ------------------------------------------
 
     if (/^\d+$/.test(text)) {
       currentItem = {
@@ -406,10 +545,16 @@ function parseItems(lines) {
         price: null
       }
 
-      items.push(currentItem)
+      items.push(
+        currentItem
+      )
 
       continue
     }
+
+    // ------------------------------------------
+    // ถ้าเป็นราคาอย่างเดียว
+    // ------------------------------------------
 
     if (
       isMoney(text) ||
@@ -427,11 +572,20 @@ function parseItems(lines) {
       continue
     }
 
+    // ------------------------------------------
+    // OCR อาจตัดเลขลำดับออก
+    //
+    // HOSPITAL AND NURSING SERVICE (OPD)
+    // 250.00
+    // ------------------------------------------
+
     if (currentItem) {
       if (currentItem.desc) {
-        currentItem.desc += ' ' + text
+        currentItem.desc +=
+          ' ' + text
       } else {
-        currentItem.desc = text
+        currentItem.desc =
+          text
       }
     } else {
       currentItem = {
@@ -440,7 +594,9 @@ function parseItems(lines) {
         price: null
       }
 
-      items.push(currentItem)
+      items.push(
+        currentItem
+      )
     }
   }
 
@@ -457,25 +613,33 @@ function parseCategoryTotals(items) {
   let other = 0
 
   for (const item of items) {
-    const desc = normalizeSpaces(
-      item.desc || ''
-    ).toLowerCase()
+    const desc =
+      normalizeSpaces(
+        item.desc || ''
+      ).toLowerCase()
 
-    const price =
+    const rawPrice =
       item.price === null ||
       item.price === undefined ||
       item.price === ''
-        ? 0
-        : Number(
-            String(item.price)
-              .replace(/,/g, '')
-          )
+        ? ''
+        : String(item.price)
 
-    if (!Number.isFinite(price)) {
+    const price =
+      Number(
+        rawPrice.replace(/,/g, '')
+      )
+
+    if (
+      !Number.isFinite(price)
+    ) {
       continue
     }
 
+    // ------------------------------------------
     // Doctor Fee
+    // ------------------------------------------
+
     if (
       desc === 'doctor fee' ||
       desc.includes('doctor fee')
@@ -484,24 +648,47 @@ function parseCategoryTotals(items) {
       continue
     }
 
-    // Hospital & Nursing Service
+    // ------------------------------------------
+    // Hospital & Nursing
+    // ------------------------------------------
+
     if (
-      desc.includes('hospital and nursing service') ||
-      desc.includes('hospital & nursing service') ||
-      desc.includes('hospital nursing service')
+      desc.includes(
+        'hospital and nursing service'
+      ) ||
+      desc.includes(
+        'hospital & nursing service'
+      ) ||
+      desc.includes(
+        'hospital nursing service'
+      ) ||
+      desc.includes(
+        'hospital and nursing'
+      ) ||
+      desc.includes(
+        'hospital nursing'
+      )
     ) {
       hospitalNursing += price
       continue
     }
 
-    // ทุกอย่างที่เหลือ = Other
+    // ------------------------------------------
+    // อื่นๆ
+    // ------------------------------------------
+
     other += price
   }
 
   return {
-    doctorFee: doctorFee.toFixed(2),
-    hospitalNursing: hospitalNursing.toFixed(2),
-    other: other.toFixed(2)
+    doctorFee:
+      doctorFee.toFixed(2),
+
+    hospitalNursing:
+      hospitalNursing.toFixed(2),
+
+    other:
+      other.toFixed(2)
   }
 }
 
@@ -510,21 +697,37 @@ function parseCategoryTotals(items) {
 // ==================================================
 
 function parseVat(lines) {
-  for (let i = 0; i < lines.length; i++) {
-    const line = normalizeSpaces(lines[i])
+  for (
+    let i = 0;
+    i < lines.length;
+    i++
+  ) {
+    const line =
+      normalizeSpaces(lines[i])
 
-    const sameLine = line.match(
-      /\bvat\b\s*[:.]?\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i
-    )
+    // VAT 210.00
+    // VAT. 210.00
+    const sameLine =
+      line.match(
+        /\bvat\b\s*[:.]?\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i
+      )
 
     if (sameLine) {
-      return cleanMoney(sameLine[1])
+      return cleanMoney(
+        sameLine[1]
+      )
     }
 
-    if (/\bvat\b\s*[:.]?$/i.test(line)) {
-      const next = normalizeSpaces(
-        lines[i + 1] || ''
-      )
+    // VAT
+    // 210.00
+
+    if (
+      /^vat\s*[:.]?$/i.test(line)
+    ) {
+      const next =
+        normalizeSpaces(
+          lines[i + 1] || ''
+        )
 
       if (isMoney(next)) {
         return cleanMoney(next)
@@ -540,26 +743,39 @@ function parseVat(lines) {
 // ==================================================
 
 function parseTotal(lines) {
-  for (let i = 0; i < lines.length; i++) {
-    const line = normalizeSpaces(lines[i])
+  for (
+    let i = 0;
+    i < lines.length;
+    i++
+  ) {
+    const line =
+      normalizeSpaces(lines[i])
 
-    if (!/\btotal\b/i.test(line)) {
+    if (
+      !/\btotal\b/i.test(line)
+    ) {
       continue
     }
 
-    const sameLine = extractMoney(line)
+    const sameLine =
+      extractMoney(line)
 
     if (sameLine) {
-      return cleanMoney(sameLine)
+      return cleanMoney(
+        sameLine
+      )
     }
 
-    const next = lines[i + 1] || ''
+    const next =
+      lines[i + 1] || ''
 
     const nextMoney =
       extractMoney(next)
 
     if (nextMoney) {
-      return cleanMoney(nextMoney)
+      return cleanMoney(
+        nextMoney
+      )
     }
   }
 
@@ -571,16 +787,22 @@ function parseTotal(lines) {
 // ==================================================
 
 function parseReceipt(ocrText) {
-  const raw = ocrText || ''
+  const raw =
+    ocrText || ''
 
-  const lines = raw
-    .split(/\r?\n/)
-    .map(line => normalizeSpaces(line))
-    .filter(Boolean)
+  const lines =
+    raw
+      .split(/\r?\n/)
+      .map(line =>
+        normalizeSpaces(line)
+      )
+      .filter(Boolean)
 
-  const bn = parseBN(lines)
+  const bn =
+    parseBN(lines)
 
-  const hn = parseHN(lines)
+  const hn =
+    parseHN(lines)
 
   const patientName =
     parseName(lines)
@@ -604,9 +826,11 @@ function parseReceipt(ocrText) {
     parseTotal(lines)
 
   return {
-    timestamp: new Date().toISOString(),
+    timestamp:
+      new Date().toISOString(),
 
-    receiptNo: bn,
+    receiptNo:
+      bn,
 
     bn,
 
@@ -626,6 +850,10 @@ function parseReceipt(ocrText) {
 
     total,
 
+    // ==============================
+    // 3 หมวดค่าใช้จ่าย
+    // ==============================
+
     doctorFee:
       categories.doctorFee,
 
@@ -635,7 +863,15 @@ function parseReceipt(ocrText) {
     other:
       categories.other,
 
+    // ==============================
+    // รายการทั้งหมด
+    // ==============================
+
     items,
+
+    // ==============================
+    // OCR ดิบ
+    // ==============================
 
     raw
   }

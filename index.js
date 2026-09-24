@@ -5,9 +5,9 @@ const axios = require('axios')
 
 const sendToSheet = require('./send-to-sheet')
 
+// OCR แยกออกมาแล้ว
 const {
   ocrImage,
-  isOurReceipt,
   parseReceipt
 } = require('./ocr')
 
@@ -57,7 +57,12 @@ function resetState(userId) {
 function isCancelMessage(text) {
   const t = (text || '').trim().toLowerCase()
 
-  return ['ยกเลิก', 'cancel', 'ออก', 'เลิก'].includes(t)
+  return [
+    'ยกเลิก',
+    'cancel',
+    'ออก',
+    'เลิก'
+  ].includes(t)
 }
 
 // ================== helper: help ==================
@@ -107,9 +112,7 @@ const WAIT_IMAGE_MS = 60 * 1000
 const WAIT_SEARCH_MS = 60 * 1000
 
 function isExpired(ts, ms) {
-  if (!ts) {
-    return false
-  }
+  if (!ts) return false
 
   return Date.now() - ts > ms
 }
@@ -163,34 +166,47 @@ async function querySheet(params) {
 // ================== WEBHOOK ==================
 
 app.post('/webhook', async (req, res) => {
-  const event = req.body.events?.[0]
+
+  const event =
+    req.body.events?.[0]
 
   if (!event) {
     return res.sendStatus(200)
   }
 
-  const userId = event.source?.userId
-  let state = getState(userId)
+  const userId =
+    event.source?.userId
+
+  let state =
+    getState(userId)
 
   try {
-    // ================== TEXT ==================
+
+    // ==================================================
+    // TEXT
+    // ==================================================
 
     if (event.message?.type === 'text') {
-      const text = (event.message.text || '').trim()
 
-      // ================== timeout: upload ==================
+      const text =
+        (event.message.text || '').trim()
+
+      // ================== timeout upload ==================
 
       if (
         state.mode === 'upload' &&
         state.step === 'waitingImage'
       ) {
+
         if (
           isExpired(
             state.waitingSince,
             WAIT_IMAGE_MS
           )
         ) {
-          state = resetState(userId)
+
+          state =
+            resetState(userId)
 
           await reply(
             event.replyToken,
@@ -201,19 +217,22 @@ app.post('/webhook', async (req, res) => {
         }
       }
 
-      // ================== timeout: search ==================
+      // ================== timeout search ==================
 
       if (
         state.mode === 'search' &&
         state.step !== 'idle'
       ) {
+
         if (
           isExpired(
             state.searchWaitingSince,
             WAIT_SEARCH_MS
           )
         ) {
-          state = resetState(userId)
+
+          state =
+            resetState(userId)
 
           await reply(
             event.replyToken,
@@ -227,7 +246,9 @@ app.post('/webhook', async (req, res) => {
       // ================== cancel ==================
 
       if (isCancelMessage(text)) {
+
         if (state.mode === 'idle') {
+
           await reply(
             event.replyToken,
             'ตอนนี้ยังไม่ได้เริ่มอะไรครับ 🙂\nพิมพ์ "ส่งเอกสาร" หรือ "ค้นหา" ได้เลย'
@@ -236,7 +257,8 @@ app.post('/webhook', async (req, res) => {
           return res.sendStatus(200)
         }
 
-        state = resetState(userId)
+        state =
+          resetState(userId)
 
         await reply(
           event.replyToken,
@@ -252,23 +274,37 @@ app.post('/webhook', async (req, res) => {
         isHelpMessage(text) ||
         text === 'วิธีใช้'
       ) {
+
         await reply(
           event.replyToken,
           `📌 วิธีใช้งาน
 
 🟦 ส่งเอกสาร
+
 1) พิมพ์ "ส่งเอกสาร"
+
 2) ใส่รหัสพนักงาน
+
 3) ส่งรูปใบเสร็จ "ทีละ 1 รูป"
+
 ระบบจะบันทึกให้ทันที
+
 (ถ้ารอรูปเกิน 1 นาที ระบบจะยกเลิกให้อัตโนมัติ)
+
 🔎 ค้นหา
+
 1) พิมพ์ "ค้นหา"
+
 2) ใส่รหัสพนักงาน
+
 3) เลือกประเภทการค้นหาโดยพิมพ์เลข
+
 1) BN
+
 2) HN
+
 3) NAME
+
 4) DATE (11/02/2026)
 
 พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน`
@@ -277,10 +313,12 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200)
       }
 
-      // ================== Rich menu triggers ==================
+      // ================== ส่งเอกสาร ==================
 
       if (text === 'ส่งเอกสาร') {
-        state = resetState(userId)
+
+        state =
+          resetState(userId)
 
         state.mode = 'upload'
         state.step = 'waitingEmployeeCode'
@@ -293,12 +331,19 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200)
       }
 
+      // ================== ค้นหา ==================
+
       if (text === 'ค้นหา') {
-        state = resetState(userId)
+
+        state =
+          resetState(userId)
 
         state.mode = 'search'
-        state.step = 'waitingEmployeeCodeForSearch'
-        state.searchWaitingSince = Date.now()
+        state.step =
+          'waitingEmployeeCodeForSearch'
+
+        state.searchWaitingSince =
+          Date.now()
 
         await reply(
           event.replyToken,
@@ -308,16 +353,22 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200)
       }
 
-      // ================== UPLOAD MODE ==================
+      // ==================================================
+      // UPLOAD MODE
+      // ==================================================
 
       if (state.mode === 'upload') {
+
         if (
-          state.step === 'waitingEmployeeCode'
+          state.step ===
+          'waitingEmployeeCode'
         ) {
+
           const code =
             normalizeEmployeeCode(text)
 
           if (!isValidEmployeeCode(code)) {
+
             await reply(
               event.replyToken,
               '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
@@ -326,9 +377,14 @@ app.post('/webhook', async (req, res) => {
             return res.sendStatus(200)
           }
 
-          state.employeeCode = code
-          state.step = 'waitingImage'
-          state.waitingSince = Date.now()
+          state.employeeCode =
+            code
+
+          state.step =
+            'waitingImage'
+
+          state.waitingSince =
+            Date.now()
 
           await reply(
             event.replyToken,
@@ -339,8 +395,10 @@ app.post('/webhook', async (req, res) => {
         }
 
         if (
-          state.step === 'waitingImage'
+          state.step ===
+          'waitingImage'
         ) {
+
           await reply(
             event.replyToken,
             'ตอนนี้รอรูปใบเสร็จอยู่นะครับ 🧾\nส่งรูปมาได้เลย หรือพิมพ์ "ยกเลิก"'
@@ -350,19 +408,24 @@ app.post('/webhook', async (req, res) => {
         }
       }
 
-      // ================== SEARCH MODE ==================
+      // ==================================================
+      // SEARCH MODE
+      // ==================================================
 
       if (state.mode === 'search') {
-        // ================== 1) employeeCode ==================
+
+        // ================== employeeCode ==================
 
         if (
           state.step ===
           'waitingEmployeeCodeForSearch'
         ) {
+
           const code =
             normalizeEmployeeCode(text)
 
           if (!isValidEmployeeCode(code)) {
+
             await reply(
               event.replyToken,
               '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
@@ -371,30 +434,42 @@ app.post('/webhook', async (req, res) => {
             return res.sendStatus(200)
           }
 
-          state.employeeCode = code
-          state.step = 'chooseSearchType'
-          state.searchWaitingSince = Date.now()
+          state.employeeCode =
+            code
+
+          state.step =
+            'chooseSearchType'
+
+          state.searchWaitingSince =
+            Date.now()
 
           await reply(
             event.replyToken,
             `โอเคครับ 👤 ${code}
 
 เลือกประเภทค้นหา (พิมพ์เลข):
+
 1) BN
+
 2) HN
+
 3) NAME
+
 4) DATE (11/02/2026)`
           )
 
           return res.sendStatus(200)
         }
 
-        // ================== 2) choose type ==================
+        // ================== choose type ==================
 
         if (
-          state.step === 'chooseSearchType'
+          state.step ===
+          'chooseSearchType'
         ) {
-          const t = text.trim()
+
+          const t =
+            text.trim()
 
           const map = {
             '1': 'BN',
@@ -404,6 +479,7 @@ app.post('/webhook', async (req, res) => {
           }
 
           if (!map[t]) {
+
             await reply(
               event.replyToken,
               '❌ กรุณาพิมพ์แค่ 1 / 2 / 3 / 4\nหรือพิมพ์ "ยกเลิก"'
@@ -412,9 +488,14 @@ app.post('/webhook', async (req, res) => {
             return res.sendStatus(200)
           }
 
-          state.searchType = map[t]
-          state.step = 'waitingSearchValue'
-          state.searchWaitingSince = Date.now()
+          state.searchType =
+            map[t]
+
+          state.step =
+            'waitingSearchValue'
+
+          state.searchWaitingSince =
+            Date.now()
 
           const hint =
             state.searchType === 'BN'
@@ -433,16 +514,21 @@ app.post('/webhook', async (req, res) => {
           return res.sendStatus(200)
         }
 
-        // ================== 3) value -> query ==================
+        // ================== search value ==================
 
         if (
-          state.step === 'waitingSearchValue'
+          state.step ===
+          'waitingSearchValue'
         ) {
-          const value = text.trim()
+
+          const value =
+            text.trim()
+
           const employeeCode =
             state.employeeCode
 
           if (!value) {
+
             await reply(
               event.replyToken,
               '❌ ค่าว่างครับ พิมพ์ใหม่อีกครั้ง หรือพิมพ์ "ยกเลิก"'
@@ -451,16 +537,15 @@ app.post('/webhook', async (req, res) => {
             return res.sendStatus(200)
           }
 
-          // ================== DATE validation ==================
-
           if (
-            state.searchType === 'DATE'
+            state.searchType ===
+            'DATE'
           ) {
+
             if (
-              !/^\d{2}\/\d{2}\/\d{4}$/.test(
-                value
-              )
+              !/^\d{2}\/\d{2}\/\d{4}$/.test(value)
             ) {
+
               await reply(
                 event.replyToken,
                 '❌ รูปแบบวันที่ไม่ถูกต้องครับ ต้องเป็น 11/02/2026'
@@ -475,17 +560,22 @@ app.post('/webhook', async (req, res) => {
           // ================== BN ==================
 
           if (
-            state.searchType === 'BN'
+            state.searchType ===
+            'BN'
           ) {
-            result = await querySheet({
-              action: 'findByBN',
-              employeeCode,
-              bn: value
-            })
 
-            state = resetState(userId)
+            result =
+              await querySheet({
+                action: 'findByBN',
+                employeeCode,
+                bn: value
+              })
+
+            state =
+              resetState(userId)
 
             if (!result.found) {
+
               await reply(
                 event.replyToken,
                 'ไม่พบข้อมูลครับ 😅'
@@ -494,7 +584,8 @@ app.post('/webhook', async (req, res) => {
               return res.sendStatus(200)
             }
 
-            const d = result.data || {}
+            const d =
+              result.data || {}
 
             await reply(
               event.replyToken,
@@ -512,6 +603,12 @@ Payment: ${d.paymentType || '-'}
 
 Total: ${d.total || '-'}
 
+Doctor Fee: ${d.doctorFee || '-'}
+
+Hospital & Nursing: ${d.hospitalNursing || '-'}
+
+Other: ${d.other || '-'}
+
 (พิมพ์ "ค้นหา" เพื่อค้นหาใหม่)`
             )
 
@@ -521,19 +618,27 @@ Total: ${d.total || '-'}
           // ================== HN ==================
 
           if (
-            state.searchType === 'HN'
+            state.searchType ===
+            'HN'
           ) {
-            result = await querySheet({
-              action: 'findByHN',
-              employeeCode,
-              hn: value
-            })
 
-            state = resetState(userId)
+            result =
+              await querySheet({
+                action: 'findByHN',
+                employeeCode,
+                hn: value
+              })
 
-            const list = result.list || []
+            state =
+              resetState(userId)
 
-            if (list.length === 0) {
+            const list =
+              result.list || []
+
+            if (
+              list.length === 0
+            ) {
+
               await reply(
                 event.replyToken,
                 'ไม่พบข้อมูลครับ 😅'
@@ -542,13 +647,14 @@ Total: ${d.total || '-'}
               return res.sendStatus(200)
             }
 
-            const preview = list
-              .slice(0, 10)
-              .map(
-                (r, i) =>
-                  `${i + 1}) ${r.dateShort || '-'} | BN ${r.bn || '-'} | Total ${r.total || '-'}`
-              )
-              .join('\n')
+            const preview =
+              list
+                .slice(0, 10)
+                .map(
+                  (r, i) =>
+                    `${i + 1}) ${r.dateShort || '-'} | BN ${r.bn || '-'} | Total ${r.total || '-'}`
+                )
+                .join('\n')
 
             await reply(
               event.replyToken,
@@ -565,19 +671,27 @@ ${preview}
           // ================== NAME ==================
 
           if (
-            state.searchType === 'NAME'
+            state.searchType ===
+            'NAME'
           ) {
-            result = await querySheet({
-              action: 'findByName',
-              employeeCode,
-              name: value
-            })
 
-            state = resetState(userId)
+            result =
+              await querySheet({
+                action: 'findByName',
+                employeeCode,
+                name: value
+              })
 
-            const list = result.list || []
+            state =
+              resetState(userId)
 
-            if (list.length === 0) {
+            const list =
+              result.list || []
+
+            if (
+              list.length === 0
+            ) {
+
               await reply(
                 event.replyToken,
                 'ไม่พบข้อมูลครับ 😅'
@@ -586,13 +700,14 @@ ${preview}
               return res.sendStatus(200)
             }
 
-            const preview = list
-              .slice(0, 10)
-              .map(
-                (r, i) =>
-                  `${i + 1}) ${r.dateShort || '-'} | BN ${r.bn || '-'} | Total ${r.total || '-'}`
-              )
-              .join('\n')
+            const preview =
+              list
+                .slice(0, 10)
+                .map(
+                  (r, i) =>
+                    `${i + 1}) ${r.dateShort || '-'} | BN ${r.bn || '-'} | Total ${r.total || '-'}`
+                )
+                .join('\n')
 
             await reply(
               event.replyToken,
@@ -609,15 +724,19 @@ ${preview}
           // ================== DATE ==================
 
           if (
-            state.searchType === 'DATE'
+            state.searchType ===
+            'DATE'
           ) {
-            result = await querySheet({
-              action: 'countByDateReceipt',
-              employeeCode,
-              date: value
-            })
 
-            state = resetState(userId)
+            result =
+              await querySheet({
+                action: 'countByDateReceipt',
+                employeeCode,
+                date: value
+              })
+
+            state =
+              resetState(userId)
 
             await reply(
               event.replyToken,
@@ -639,14 +758,20 @@ ${preview}
       return res.sendStatus(200)
     }
 
-    // ================== IMAGE ==================
+    // ==================================================
+    // IMAGE
+    // ==================================================
 
-    if (event.message?.type === 'image') {
+    if (
+      event.message?.type === 'image'
+    ) {
+
       if (
         state.mode !== 'upload' ||
         state.step !== 'waitingImage' ||
         !state.employeeCode
       ) {
+
         await reply(
           event.replyToken,
           'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" แล้วใส่รหัสพนักงานก่อนครับ 🙂'
@@ -655,15 +780,15 @@ ${preview}
         return res.sendStatus(200)
       }
 
-      // ================== timeout ==================
-
       if (
         isExpired(
           state.waitingSince,
           WAIT_IMAGE_MS
         )
       ) {
-        state = resetState(userId)
+
+        state =
+          resetState(userId)
 
         await reply(
           event.replyToken,
@@ -673,26 +798,32 @@ ${preview}
         return res.sendStatus(200)
       }
 
-      const messageId = event.message.id
+      const messageId =
+        event.message.id
 
       // ================== ดึงรูปจาก LINE ==================
 
-      const imageRes = await axios.get(
-        `https://api-data.line.me/v2/bot/message/${messageId}/content`,
-        {
-          headers: {
-            Authorization: `Bearer ${LINE_TOKEN}`
-          },
-          responseType: 'arraybuffer',
-          timeout: 20000
-        }
-      )
+      const imageRes =
+        await axios.get(
+          `https://api-data.line.me/v2/bot/message/${messageId}/content`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${LINE_TOKEN}`
+            },
+
+            responseType:
+              'arraybuffer',
+
+            timeout:
+              20000
+          }
+        )
 
       // ================== OCR ==================
 
-      const ocrText = await ocrImage(
-        imageRes.data
-      )
+      const ocrText =
+        await ocrImage(imageRes.data)
 
       console.log(
         'OCR result:',
@@ -700,6 +831,7 @@ ${preview}
       )
 
       if (!ocrText) {
+
         await reply(
           event.replyToken,
           'อ่านตัวอักษรไม่ออกครับ 😅 กรุณาลองถ่ายใหม่ให้ชัดขึ้น'
@@ -708,9 +840,19 @@ ${preview}
         return res.sendStatus(200)
       }
 
-      // ================== ตรวจว่าเป็นใบเสร็จเราไหม ==================
+      // ================== เช็คใบเสร็จ ==================
 
-      if (!isOurReceipt(ocrText)) {
+      const receiptText =
+        (ocrText || '')
+          .toLowerCase()
+          .replace(/\s+/g, ' ')
+
+      const isReceipt =
+        receiptText.includes('receipt') &&
+        receiptText.includes('asoke skin hospital')
+
+      if (!isReceipt) {
+
         await reply(
           event.replyToken,
           '❌ รูปนี้ไม่ใช่ใบเสร็จรูปแบบที่รองรับครับ\nกรุณาส่งใบเสร็จ Asoke Skin Hospital เท่านั้น 🧾'
@@ -720,34 +862,45 @@ ${preview}
       }
 
       // ================== Parse ==================
-      const parsed = parseReceipt(ocrText)
 
-      parsed.employeeCode = state.employeeCode
+      const parsed =
+        parseReceipt(ocrText)
 
-      // ==========================================
-      // 3 หมวดค่าใช้จ่าย
-      // ==========================================
+      parsed.employeeCode =
+        state.employeeCode
 
-      // Doctor Fee
-      parsed.doctorFee = parsed.doctorFee || ''
+      // ================== ค่าใช้จ่าย 3 หมวด ==================
 
-      // Hospital & Nursing
-      parsed.hospitalNursing = parsed.hospitalNursing || ''
+      parsed.doctorFee =
+        parsed.doctorFee || ''
 
-      // รายการอื่น ๆ
-      parsed.other = parsed.other || ''
+      parsed.hospitalNursing =
+        parsed.hospitalNursing || ''
 
-      // ==========================================
-      // save (ทีละ 1 รูป)
-      // ==========================================
+      parsed.other =
+        parsed.other || ''
 
+      console.log(
+        'Parsed expense:',
+        {
+          doctorFee:
+            parsed.doctorFee,
+
+          hospitalNursing:
+            parsed.hospitalNursing,
+
+          other:
+            parsed.other
+        }
+      )
 
       // ================== Save ==================
 
       await sendToSheet(parsed)
 
-      // reset timer ทุกครั้งที่มีรูปเข้ามา
-      state.waitingSince = Date.now()
+      // reset timer
+      state.waitingSince =
+        Date.now()
 
       // ================== Reply ==================
 
@@ -759,11 +912,17 @@ ${preview}
 
 BN: ${parsed.bn || '-'}
 
-Date: ${parsed.receiptDateRaw || '-'} ${parsed.timeText ? `(${parsed.timeText})` : ''}
+Date: ${parsed.receiptDateRaw || '-'}
 
 HN: ${parsed.hn || '-'}
 
 Total: ${parsed.total || '-'}
+
+Doctor Fee: ${parsed.doctorFee || '-'}
+
+Hospital & Nursing: ${parsed.hospitalNursing || '-'}
+
+Other: ${parsed.other || '-'}
 
 ส่งรูปต่อไปได้เลย 🧾
 
@@ -772,25 +931,28 @@ Total: ${parsed.total || '-'}
 
       return res.sendStatus(200)
     }
+
   } catch (err) {
+
     console.error(
       err.response?.data ||
       err.message
     )
   }
 
-  res.sendStatus(200)
+  return res.sendStatus(200)
 })
 
 // ================== START ==================
 
-app.listen(3000, () => {
-  console.log(
-    '🚀 LINE webhook running on port 3000'
-  )
-})
-
-
+app.listen(
+  3000,
+  () => {
+    console.log(
+      '🚀 LINE webhook running on port 3000'
+    )
+  }
+)
 
 
 
