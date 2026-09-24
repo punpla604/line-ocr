@@ -937,82 +937,77 @@ ${messages}
           // HN
           // ==================================================
 
-          if (
-            state.searchType === 'HN'
-          ) {
 
-            console.log(
-              'SEARCH HN:',
-              {
-                employeeCode,
-                month,
-                year,
-                value
-              }
-            )
+          if (state.searchType === 'HN') {
 
-            const result =
-              await querySheet({
-                action: 'findByHN',
-                ...baseParams,
-                hn: value
-              })
+            console.log('SEARCH HN:', {
+              employeeCode,
+              month: state.searchMonth,
+              year: state.searchYear,
+              value
+            })
 
-            console.log(
-              'HN RESULT:',
-              result
-            )
+            const result = await querySheet({
+              action: 'findByHN',
+              employeeCode: employeeCode,
+              month: state.searchMonth,
+              year: state.searchYear,
+              hn: value
+            })
+
+            console.log('HN RESULT:', result)
 
             resetState(userId)
 
-            const list =
-              Array.isArray(result?.list)
-                ? result.list
-                : []
+            const list = Array.isArray(result?.list)
+              ? result.list
+              : []
 
             if (list.length === 0) {
-
               await reply(
                 event.replyToken,
                 `❌ ไม่พบข้อมูลครับ 😅
 
-Employee: ${employeeCode}
-Month: ${month}
-Year: ${year}
-HN: ${value}`
+          Employee: ${employeeCode}
+          Month: ${state.searchMonth}
+          Year: ${state.searchYear}
+          HN: ${value}
+
+          พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
               )
 
               return res.sendStatus(200)
             }
 
-            // HN แสดงสูงสุด 10
-            const preview =
-              list
-                .slice(0, 10)
-                .map((r, i) =>
-                  formatResultItem(r, i)
-                )
-                .join(
-                  '\n\n--------------------\n\n'
-                )
+            const preview = list
+              .slice(0, 10)
+              .map((r, i) => {
+                return `🧾 รายการที่ ${i + 1}
 
-            const moreText =
-              list.length > 10
-                ? `\n\nแสดง 10 จาก ${list.length} รายการ`
-                : ''
+          BN: ${r.bn || '-'}
+          HN: ${r.hn || value || '-'}
+          Name: ${r.name || '-'}
+          Date: ${r.dateShort || r.dateText || '-'}
+          Payment: ${r.paymentType || '-'}
+          Total: ${formatNumber(r.total)}
+          Doctor Fee: ${formatNumber(r.doctorFee)}
+          Hospital & Nursing: ${formatNumber(r.hospitalNursing)}
+          Other: ${formatNumber(r.other)}`
+              })
+              .join('\n\n--------------------\n\n')
 
             await reply(
               event.replyToken,
               `🔎 พบทั้งหมด ${list.length} รายการ
 
-Employee: ${employeeCode}
-Month: ${month}
-Year: ${year}
-HN: ${value}
+          Employee: ${employeeCode}
+          HN: ${value}
 
-${preview}${moreText}
+          ${preview}
 
-พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
+          ${list.length > 10 ? '(แสดงสูงสุด 10 รายการ)' : ''}
+
+          พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
             )
 
             return res.sendStatus(200)
