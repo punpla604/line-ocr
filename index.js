@@ -231,7 +231,7 @@ async function querySheet(params = {}) {
       SHEET_URL,
       {
         params: queryParams,
-        timeout: 20000
+        timeout: 60000
       }
     )
 
