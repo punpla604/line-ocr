@@ -29,9 +29,22 @@ function toSheetPayload(data) {
     vat: data.vat || '',
     total: data.total || '',
 
+    // ==========================================
+    // ค่าใช้จ่าย 3 หมวด
+    // ==========================================
+
+    doctorFee: data.doctorFee || '',
+
+    hospitalNursing: data.hospitalNursing || '',
+
+    other: data.other || '',
+
+    // ==========================================
     // items
-    itemjson: itemsJson,     // <<< สำคัญ (ให้ตรงกับชีท)
-    itemsJson: itemsJson,    // เผื่อชีทใช้ชื่อนี้
+    // ==========================================
+
+    itemjson: itemsJson,
+    itemsJson: itemsJson,
 
     // raw text
     raw: data.raw || ''
@@ -39,30 +52,57 @@ function toSheetPayload(data) {
 }
 
 async function sendToSheet(data) {
-  if (!SHEET_URL) throw new Error('❌ Missing env: SHEET_URL')
-  if (!SHEET_SECRET) throw new Error('❌ Missing env: SHEET_SECRET')
+  if (!SHEET_URL) {
+    throw new Error('❌ Missing env: SHEET_URL')
+  }
+
+  if (!SHEET_SECRET) {
+    throw new Error('❌ Missing env: SHEET_SECRET')
+  }
 
   const payload = toSheetPayload(data)
 
   try {
-    const res = await axios.post(SHEET_URL, payload, {
-      timeout: 15000,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-secret': SHEET_SECRET
-      }
-    })
+    const res = await axios.post(
+      SHEET_URL,
+      payload,
+      {
+        timeout: 15000,
 
-    console.log('📊 ส่งข้อมูลเข้า Google Sheet แล้ว:', res.data)
+        headers: {
+          'Content-Type': 'application/json',
+          'x-secret': SHEET_SECRET
+        }
+      }
+    )
+
+    console.log(
+      '📊 ส่งข้อมูลเข้า Google Sheet แล้ว:',
+      res.data
+    )
+
     return res.data
+
   } catch (err) {
-    console.error('❌ ส่งเข้า Google Sheet ไม่สำเร็จ')
+    console.error(
+      '❌ ส่งเข้า Google Sheet ไม่สำเร็จ'
+    )
 
     if (err.response) {
-      console.error('STATUS:', err.response.status)
-      console.error('DATA:', err.response.data)
+      console.error(
+        'STATUS:',
+        err.response.status
+      )
+
+      console.error(
+        'DATA:',
+        err.response.data
+      )
     } else {
-      console.error('ERROR:', err.message)
+      console.error(
+        'ERROR:',
+        err.message
+      )
     }
 
     throw err

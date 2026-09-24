@@ -120,8 +120,6 @@ const MONTHS = [
   'December'
 ]
 
-// แก้เฉพาะคำ OCR ที่เรารู้แน่นอน
-// ไม่ใช้ fuzzy matching
 const OCR_MONTH_FIXES = {
   jandary: 'January',
   febuary: 'February',
@@ -137,15 +135,6 @@ function parseDateStrict(lines) {
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeSpaces(lines[i])
 
-    /*
-      รองรับ OCR ที่อ่าน Date เป็น Dale
-
-      ตัวอย่าง:
-      Date 31 January 2026 Time 18:01:02
-      Dale 31 January 2026 Time 18:01:02
-      Dale 31 Jandary 2026 Time 18:01:02
-    */
-
     const m = line.match(
       /^(?:Date|Dale)\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:\s+Time\s+(\d{2}:\d{2}:\d{2}))?/i
     )
@@ -158,15 +147,6 @@ function parseDateStrict(lines) {
     const originalMonth = m[2]
     const year = m[3]
     const time = m[4] || ''
-
-    /*
-      แก้เฉพาะคำที่อยู่ใน OCR_MONTH_FIXES
-
-      Jandary -> January
-
-      แต่ถ้าเป็นคำอื่นที่เราไม่รู้จัก
-      จะไม่เดา
-    */
 
     const monthKey =
       originalMonth.toLowerCase()
@@ -181,7 +161,6 @@ function parseDateStrict(lines) {
         correctedMonth.toLowerCase()
     )
 
-    // ไม่รู้จักเดือน -> ไม่เดา
     if (!validMonth) {
       return {
         date: '',
@@ -204,7 +183,6 @@ function parseDateStrict(lines) {
       }
     }
 
-    // ตรวจจำนวนวันจริงของเดือน
     const monthIndex =
       MONTHS.indexOf(validMonth)
 
@@ -350,7 +328,7 @@ function parsePaymentType(lines) {
 }
 
 // ==================================================
-// Table / Items
+// Items
 // ==================================================
 
 function parseItems(lines) {
@@ -379,7 +357,6 @@ function parseItems(lines) {
       continue
     }
 
-    // summary เริ่มแล้ว
     if (/^vat\b/i.test(line)) {
       break
     }
@@ -388,7 +365,6 @@ function parseItems(lines) {
       break
     }
 
-    // CreditCard เป็นยอดชำระ ไม่ใช่ item
     if (/credit\s*card/i.test(line)) {
       continue
     }
@@ -400,11 +376,6 @@ function parseItems(lines) {
 
   for (const line of tableLines) {
     const text = normalizeSpaces(line)
-
-    // ------------------------------------------
-    // กรณี:
-    // 1 DOCTOR FEE 1,000.00
-    // ------------------------------------------
 
     const inline = text.match(
       /^(\d+)\s+(.+?)\s+(-|\d{1,3}(?:,\d{3})*\.\d{2})$/
@@ -428,10 +399,6 @@ function parseItems(lines) {
       continue
     }
 
-    // ------------------------------------------
-    // กรณีมีเลขลำดับแยกบรรทัด
-    // ------------------------------------------
-
     if (/^\d+$/.test(text)) {
       currentItem = {
         no: text,
@@ -443,10 +410,6 @@ function parseItems(lines) {
 
       continue
     }
-
-    // ------------------------------------------
-    // กรณีเป็นราคา
-    // ------------------------------------------
 
     if (
       isMoney(text) ||
@@ -463,18 +426,6 @@ function parseItems(lines) {
 
       continue
     }
-
-    // ------------------------------------------
-    // กรณีเป็น description
-    // ------------------------------------------
-
-    /*
-      ถ้ามี item ก่อนหน้า
-      ให้เติม description
-
-      ถ้าไม่มี item ก่อนหน้า
-      เราจะสร้าง item โดยไม่เดาเลข
-    */
 
     if (currentItem) {
       if (currentItem.desc) {
@@ -497,6 +448,64 @@ function parseItems(lines) {
 }
 
 // ==================================================
+// Category totals
+// ==================================================
+
+function parseCategoryTotals(items) {
+  let doctorFee = 0
+  let hospitalNursing = 0
+  let other = 0
+
+  for (const item of items) {
+    const desc = normalizeSpaces(
+      item.desc || ''
+    ).toLowerCase()
+
+    const price =
+      item.price === null ||
+      item.price === undefined ||
+      item.price === ''
+        ? 0
+        : Number(
+            String(item.price)
+              .replace(/,/g, '')
+          )
+
+    if (!Number.isFinite(price)) {
+      continue
+    }
+
+    // Doctor Fee
+    if (
+      desc === 'doctor fee' ||
+      desc.includes('doctor fee')
+    ) {
+      doctorFee += price
+      continue
+    }
+
+    // Hospital & Nursing Service
+    if (
+      desc.includes('hospital and nursing service') ||
+      desc.includes('hospital & nursing service') ||
+      desc.includes('hospital nursing service')
+    ) {
+      hospitalNursing += price
+      continue
+    }
+
+    // ทุกอย่างที่เหลือ = Other
+    other += price
+  }
+
+  return {
+    doctorFee: doctorFee.toFixed(2),
+    hospitalNursing: hospitalNursing.toFixed(2),
+    other: other.toFixed(2)
+  }
+}
+
+// ==================================================
 // VAT
 // ==================================================
 
@@ -504,8 +513,6 @@ function parseVat(lines) {
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeSpaces(lines[i])
 
-    // ต้องเป็น VAT แล้วตามด้วยจำนวนเงินจริง ๆ
-    // เช่น VAT 210.00
     const sameLine = line.match(
       /\bvat\b\s*[:.]?\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i
     )
@@ -514,14 +521,10 @@ function parseVat(lines) {
       return cleanMoney(sameLine[1])
     }
 
-    // รองรับ:
-    // VAT
-    // 210.00
-    //
-    // แต่ต้องเป็น "บรรทัดถัดไปทันที"
-    // และบรรทัด VAT ต้องจบด้วย VAT จริง ๆ
     if (/\bvat\b\s*[:.]?$/i.test(line)) {
-      const next = normalizeSpaces(lines[i + 1] || '')
+      const next = normalizeSpaces(
+        lines[i + 1] || ''
+      )
 
       if (isMoney(next)) {
         return cleanMoney(next)
@@ -540,52 +543,7 @@ function parseTotal(lines) {
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeSpaces(lines[i])
 
-    /*
-      รองรับ:
-
-      Total 14,910.00
-
-      และ:
-
-      Signature- Cashier Total 14,910.00
-    */
-
     if (!/\btotal\b/i.test(line)) {
-      continue
-    }
-
-    const sameLine = extractMoney(line)
-
-    if (sameLine) {
-      return cleanMoney(sameLine)
-    }
-
-    // กรณี:
-    // Total
-    // 14,910.00
-
-    const next = lines[i + 1] || ''
-
-    const nextMoney =
-      extractMoney(next)
-
-    if (nextMoney) {
-      return cleanMoney(nextMoney)
-    }
-  }
-
-  return ''
-}
-
-// ==================================================
-// Payment amount
-// ==================================================
-
-function parsePaymentAmount(lines) {
-  for (let i = 0; i < lines.length; i++) {
-    const line = normalizeSpaces(lines[i])
-
-    if (!/credit\s*card/i.test(line)) {
       continue
     }
 
@@ -636,15 +594,14 @@ function parseReceipt(ocrText) {
   const items =
     parseItems(lines)
 
+  const categories =
+    parseCategoryTotals(items)
+
   const vat =
     parseVat(lines)
 
   const total =
     parseTotal(lines)
-
-  // เก็บไว้รองรับอนาคต
-  // ตอนนี้ยังไม่ได้เพิ่ม field ลง Sheet
-  parsePaymentAmount(lines)
 
   return {
     timestamp: new Date().toISOString(),
@@ -668,6 +625,15 @@ function parseReceipt(ocrText) {
     vat,
 
     total,
+
+    doctorFee:
+      categories.doctorFee,
+
+    hospitalNursing:
+      categories.hospitalNursing,
+
+    other:
+      categories.other,
 
     items,
 
