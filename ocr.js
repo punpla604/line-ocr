@@ -19,6 +19,7 @@ async function ocrImage(imageBuffer) {
   form.append('OCREngine', '2')
   form.append('scale', 'true')
   form.append('isTable', 'true')
+
   form.append('file', imageBuffer, {
     filename: 'receipt.jpg'
   })
@@ -101,7 +102,7 @@ function isDash(text) {
 }
 
 // ==================================================
-// Date - STRICT / NO GUESS
+// Date
 // ==================================================
 
 const MONTHS = [
@@ -119,6 +120,19 @@ const MONTHS = [
   'December'
 ]
 
+// แก้เฉพาะคำ OCR ที่เรารู้แน่นอน
+// ไม่ใช้ fuzzy matching
+const OCR_MONTH_FIXES = {
+  jandary: 'January',
+  febuary: 'February',
+  feburary: 'February',
+  agust: 'August',
+  septmber: 'September',
+  octber: 'October',
+  novmber: 'November',
+  decmber: 'December'
+}
+
 function parseDateStrict(lines) {
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeSpaces(lines[i])
@@ -126,16 +140,10 @@ function parseDateStrict(lines) {
     /*
       รองรับ OCR ที่อ่าน Date เป็น Dale
 
-      ตัวอย่างที่ยอมรับ:
+      ตัวอย่าง:
       Date 31 January 2026 Time 18:01:02
       Dale 31 January 2026 Time 18:01:02
-
-      ตัวอย่างที่ "ไม่ยอมรับ":
-      Date 31 Jandary 2026
-      Date 31 Jan 2026
-      Date 31 Janu 2026
-
-      ห้ามแก้คำเดือน OCR เอง
+      Dale 31 Jandary 2026 Time 18:01:02
     */
 
     const m = line.match(
@@ -147,24 +155,33 @@ function parseDateStrict(lines) {
     }
 
     const day = m[1]
-    const monthText = m[2]
+    const originalMonth = m[2]
     const year = m[3]
     const time = m[4] || ''
 
     /*
-      ต้องตรงกับชื่อเดือนเต็มเท่านั้น
-      ห้ามใช้ startsWith
-      ห้ามใช้ fuzzy matching
-      ห้ามแก้ spelling
+      แก้เฉพาะคำที่อยู่ใน OCR_MONTH_FIXES
+
+      Jandary -> January
+
+      แต่ถ้าเป็นคำอื่นที่เราไม่รู้จัก
+      จะไม่เดา
     */
+
+    const monthKey =
+      originalMonth.toLowerCase()
+
+    const correctedMonth =
+      OCR_MONTH_FIXES[monthKey] ||
+      originalMonth
 
     const validMonth = MONTHS.find(
       month =>
         month.toLowerCase() ===
-        monthText.toLowerCase()
+        correctedMonth.toLowerCase()
     )
 
-    // เดือนผิด / OCR อ่านผิด
+    // ไม่รู้จักเดือน -> ไม่เดา
     if (!validMonth) {
       return {
         date: '',
@@ -175,7 +192,6 @@ function parseDateStrict(lines) {
     const dayNum = Number(day)
     const yearNum = Number(year)
 
-    // ตรวจเฉพาะค่าที่เป็นไปได้
     if (
       dayNum < 1 ||
       dayNum > 31 ||
@@ -188,11 +204,7 @@ function parseDateStrict(lines) {
       }
     }
 
-    /*
-      ตรวจจำนวนวันตามเดือนจริง
-      เช่น 31 February ต้องไม่ผ่าน
-    */
-
+    // ตรวจจำนวนวันจริงของเดือน
     const monthIndex =
       MONTHS.indexOf(validMonth)
 
@@ -309,25 +321,27 @@ function parsePaymentType(lines) {
     const lower = normalized.toLowerCase()
 
     for (const keyword of paymentKeywords) {
-      if (lower.includes(keyword)) {
-        if (
-          keyword === 'creditcard' ||
-          keyword === 'credit card'
-        ) {
-          return 'Credit Card'
-        }
+      if (!lower.includes(keyword)) {
+        continue
+      }
 
-        if (keyword === 'bank transfer') {
-          return 'Bank Transfer'
-        }
+      if (
+        keyword === 'creditcard' ||
+        keyword === 'credit card'
+      ) {
+        return 'Credit Card'
+      }
 
-        if (keyword === 'transfer') {
-          return 'Transfer'
-        }
+      if (keyword === 'bank transfer') {
+        return 'Bank Transfer'
+      }
 
-        if (keyword === 'cash') {
-          return 'Cash'
-        }
+      if (keyword === 'transfer') {
+        return 'Transfer'
+      }
+
+      if (keyword === 'cash') {
+        return 'Cash'
       }
     }
   }
@@ -336,7 +350,7 @@ function parsePaymentType(lines) {
 }
 
 // ==================================================
-// Table
+// Table / Items
 // ==================================================
 
 function parseItems(lines) {
@@ -365,7 +379,7 @@ function parseItems(lines) {
       continue
     }
 
-    // Summary เริ่มแล้ว
+    // summary เริ่มแล้ว
     if (/^vat\b/i.test(line)) {
       break
     }
@@ -374,7 +388,7 @@ function parseItems(lines) {
       break
     }
 
-    // Credit Card ไม่ใช่ item
+    // CreditCard เป็นยอดชำระ ไม่ใช่ item
     if (/credit\s*card/i.test(line)) {
       continue
     }
@@ -388,7 +402,8 @@ function parseItems(lines) {
     const text = normalizeSpaces(line)
 
     // ------------------------------------------
-    // 1 Description 1,000.00
+    // กรณี:
+    // 1 DOCTOR FEE 1,000.00
     // ------------------------------------------
 
     const inline = text.match(
@@ -409,11 +424,12 @@ function parseItems(lines) {
       })
 
       currentItem = null
+
       continue
     }
 
     // ------------------------------------------
-    // เลขลำดับ
+    // กรณีมีเลขลำดับแยกบรรทัด
     // ------------------------------------------
 
     if (/^\d+$/.test(text)) {
@@ -429,7 +445,7 @@ function parseItems(lines) {
     }
 
     // ------------------------------------------
-    // ราคา
+    // กรณีเป็นราคา
     // ------------------------------------------
 
     if (
@@ -449,8 +465,16 @@ function parseItems(lines) {
     }
 
     // ------------------------------------------
-    // Description
+    // กรณีเป็น description
     // ------------------------------------------
+
+    /*
+      ถ้ามี item ก่อนหน้า
+      ให้เติม description
+
+      ถ้าไม่มี item ก่อนหน้า
+      เราจะสร้าง item โดยไม่เดาเลข
+    */
 
     if (currentItem) {
       if (currentItem.desc) {
@@ -458,6 +482,14 @@ function parseItems(lines) {
       } else {
         currentItem.desc = text
       }
+    } else {
+      currentItem = {
+        no: '',
+        desc: text,
+        price: null
+      }
+
+      items.push(currentItem)
     }
   }
 
@@ -472,21 +504,24 @@ function parseVat(lines) {
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeSpaces(lines[i])
 
-    if (!/^vat\b/i.test(line)) {
+    if (!/\bvat\b/i.test(line)) {
       continue
     }
 
-    // VAT 210.00
+    // เช่น VAT 210.00
     const sameLine = extractMoney(line)
 
     if (sameLine) {
       return cleanMoney(sameLine)
     }
 
+    // เช่น
     // VAT
     // 210.00
     const next = lines[i + 1] || ''
-    const nextMoney = extractMoney(next)
+
+    const nextMoney =
+      extractMoney(next)
 
     if (nextMoney) {
       return cleanMoney(nextMoney)
@@ -504,21 +539,34 @@ function parseTotal(lines) {
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeSpaces(lines[i])
 
-    if (!/^total\b/i.test(line)) {
+    /*
+      รองรับ:
+
+      Total 14,910.00
+
+      และ:
+
+      Signature- Cashier Total 14,910.00
+    */
+
+    if (!/\btotal\b/i.test(line)) {
       continue
     }
 
-    // Total 3,210.00
     const sameLine = extractMoney(line)
 
     if (sameLine) {
       return cleanMoney(sameLine)
     }
 
+    // กรณี:
     // Total
-    // 3,210.00
+    // 14,910.00
+
     const next = lines[i + 1] || ''
-    const nextMoney = extractMoney(next)
+
+    const nextMoney =
+      extractMoney(next)
 
     if (nextMoney) {
       return cleanMoney(nextMoney)
@@ -547,7 +595,9 @@ function parsePaymentAmount(lines) {
     }
 
     const next = lines[i + 1] || ''
-    const nextMoney = extractMoney(next)
+
+    const nextMoney =
+      extractMoney(next)
 
     if (nextMoney) {
       return cleanMoney(nextMoney)
@@ -570,10 +620,14 @@ function parseReceipt(ocrText) {
     .filter(Boolean)
 
   const bn = parseBN(lines)
-  const hn = parseHN(lines)
-  const patientName = parseName(lines)
 
-  const dateResult = parseDateStrict(lines)
+  const hn = parseHN(lines)
+
+  const patientName =
+    parseName(lines)
+
+  const dateResult =
+    parseDateStrict(lines)
 
   const paymentType =
     parsePaymentType(lines)
@@ -587,8 +641,8 @@ function parseReceipt(ocrText) {
   const total =
     parseTotal(lines)
 
-  // Parse เพื่อรองรับ Credit Card + amount
-  // แต่ยังไม่เพิ่ม field ใหม่ เพื่อไม่กระทบ Sheet
+  // เก็บไว้รองรับอนาคต
+  // ตอนนี้ยังไม่ได้เพิ่ม field ลง Sheet
   parsePaymentAmount(lines)
 
   return {
@@ -600,9 +654,11 @@ function parseReceipt(ocrText) {
 
     hn,
 
-    receiptDateRaw: dateResult.date,
+    receiptDateRaw:
+      dateResult.date,
 
-    timeText: dateResult.time,
+    timeText:
+      dateResult.time,
 
     patientName,
 
