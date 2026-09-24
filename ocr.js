@@ -128,7 +128,7 @@ const MONTHS = [
 const OCR_MONTH_FIXES = {
   jandary: 'January',
   janary: 'January',
-  janu ary: 'January',
+  january: 'January',
 
   febuary: 'February',
   feburary: 'February',
