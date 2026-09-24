@@ -87,14 +87,14 @@ function cleanMoney(text) {
 function isMoney(text) {
   const t = cleanMoney(text)
 
-  return /^\d{1,3}(?:,\d{3})*\.\d{2}$/.test(t)
+  return /^\d{1,3}(?:,\d{3})?\.\d{2}$/.test(t)
 }
 
 function extractMoney(text) {
   if (!text) return ''
 
   const m = String(text).match(
-    /\d{1,3}(?:,\d{3})*\.\d{2}/
+    /\d{1,3}(?:,\d{3})?\.\d{2}/
   )
 
   return m ? m[0] : ''
@@ -167,12 +167,14 @@ function parseDateStrict(lines) {
       OCR มักอ่าน Date เป็น Dale
 
       เราอนุญาตเฉพาะ:
+
       Date/Dale + day + month + year
 
       เช่น:
+
       Dale 31 Jandary 2026 Time 18:01:02
 
-      ไม่มีการใช้ new Date() เดา
+      ไม่มีการใช้ new Date() เพื่อเดาวันที่
     */
 
     const m = line.match(
@@ -188,10 +190,9 @@ function parseDateStrict(lines) {
     const year = m[3]
     const time = m[4] || ''
 
-    const monthKey =
-      originalMonth
-        .toLowerCase()
-        .replace(/\s+/g, '')
+    const monthKey = originalMonth
+      .toLowerCase()
+      .replace(/\s+/g, '')
 
     const correctedMonth =
       OCR_MONTH_FIXES[monthKey] ||
@@ -211,11 +212,8 @@ function parseDateStrict(lines) {
       }
     }
 
-    const dayNum =
-      Number(day)
-
-    const yearNum =
-      Number(year)
+    const dayNum = Number(day)
+    const yearNum = Number(year)
 
     if (
       dayNum < 1 ||
@@ -247,8 +245,7 @@ function parseDateStrict(lines) {
     }
 
     return {
-      date:
-        `${day} ${validMonth} ${year}`,
+      date: `${day} ${validMonth} ${year}`,
       time
     }
   }
@@ -309,13 +306,11 @@ function parseName(lines) {
     return ''
   }
 
-  const current =
-    lines[idx]
+  const current = lines[idx]
 
-  const sameLine =
-    current.match(
-      /^Name\s*[:.]?\s*(.+)$/i
-    )
+  const sameLine = current.match(
+    /^Name\s*[:.]?\s*(.+)$/i
+  )
 
   if (
     sameLine &&
@@ -407,15 +402,23 @@ function parseItems(lines) {
     OCR ตัวอย่าง:
 
     No Description Baht
+
     1 DOCTOR FEE
+
     2 LASER THERAPY 7,560.00
+
     3 LOCAL ANESTHESIA 500.00
+
     4 LASER MACHINE SERVICES 300.00
+
     HOSPITAL AND NURSING SERVICE (OPD) 250.00
+
     6 Sylfirm 6,300.00
 
     CreditCard 14,910.00
+
     VAT ...
+
     Total 14,910.00
   */
 
@@ -454,7 +457,10 @@ function parseItems(lines) {
     const lower =
       line.toLowerCase()
 
+    // ------------------------------------------
     // จบรายการก่อนถึงส่วน payment
+    // ------------------------------------------
+
     if (
       lower.includes('creditcard') ||
       lower.includes('credit card') ||
@@ -498,13 +504,14 @@ function parseItems(lines) {
     }
 
     // ------------------------------------------
-    // แบบ:
+    // แบบมีเลข + description + ราคา
+    //
     // 2 LASER THERAPY 7,560.00
     // ------------------------------------------
 
     const inline =
       text.match(
-        /^(\d+)\s+(.+?)\s+(-|\d{1,3}(?:,\d{3})*\.\d{2})$/
+        /^(\d+)\s+(.+?)\s+(-|\d{1,3}(?:,\d{3})?\.\d{2})$/
       )
 
     if (inline) {
@@ -527,12 +534,63 @@ function parseItems(lines) {
       })
 
       currentItem = null
+      continue
+    }
 
+    // ------------------------------------------
+    // สำคัญ:
+    //
+    // รายการไม่มีเลข No.
+    //
+    // HOSPITAL AND NURSING SERVICE (OPD) 250.00
+    //
+    // ต้องแยกเป็น:
+    //
+    // desc = HOSPITAL AND NURSING SERVICE (OPD)
+    // price = 250.00
+    // ------------------------------------------
+
+    const inlineNoNumber =
+      text.match(
+        /^(.+?)\s+(-|\d{1,3}(?:,\d{3})?\.\d{2})$/
+      )
+
+    if (inlineNoNumber) {
+      const desc =
+        inlineNoNumber[1].trim()
+
+      const price =
+        inlineNoNumber[2]
+
+      // ป้องกันไม่ให้ข้อความ payment
+      // กลายเป็น item
+      const lowerDesc =
+        desc.toLowerCase()
+
+      if (
+        lowerDesc.includes('creditcard') ||
+        lowerDesc.includes('credit card') ||
+        lowerDesc.includes('credtcard')
+      ) {
+        continue
+      }
+
+      items.push({
+        no: '',
+        desc,
+        price:
+          isDash(price)
+            ? null
+            : cleanMoney(price)
+      })
+
+      currentItem = null
       continue
     }
 
     // ------------------------------------------
     // แบบ:
+    //
     // 1
     // DOCTOR FEE
     // 1,000.00
@@ -674,7 +732,7 @@ function parseCategoryTotals(items) {
     }
 
     // ------------------------------------------
-    // อื่นๆ
+    // ทุกอย่างที่เหลือ = Other
     // ------------------------------------------
 
     other += price
@@ -705,11 +763,14 @@ function parseVat(lines) {
     const line =
       normalizeSpaces(lines[i])
 
+    // ------------------------------------------
     // VAT 210.00
     // VAT. 210.00
+    // ------------------------------------------
+
     const sameLine =
       line.match(
-        /\bvat\b\s*[:.]?\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i
+        /\bvat\b\s*[:.]?\s*(\d{1,3}(?:,\d{3})?\.\d{2})/i
       )
 
     if (sameLine) {
@@ -718,11 +779,30 @@ function parseVat(lines) {
       )
     }
 
+    // ------------------------------------------
     // VAT
     // 210.00
+    // ------------------------------------------
 
     if (
       /^vat\s*[:.]?$/i.test(line)
+    ) {
+      const next =
+        normalizeSpaces(
+          lines[i + 1] || ''
+        )
+
+      if (isMoney(next)) {
+        return cleanMoney(next)
+      }
+    }
+
+    // ------------------------------------------
+    // OCR อาจอ่านเป็น VAT.
+    // ------------------------------------------
+
+    if (
+      /^vat\.$/i.test(line)
     ) {
       const next =
         normalizeSpaces(
@@ -757,6 +837,10 @@ function parseTotal(lines) {
       continue
     }
 
+    // ------------------------------------------
+    // Total 14,910.00
+    // ------------------------------------------
+
     const sameLine =
       extractMoney(line)
 
@@ -765,6 +849,11 @@ function parseTotal(lines) {
         sameLine
       )
     }
+
+    // ------------------------------------------
+    // Total
+    // 14,910.00
+    // ------------------------------------------
 
     const next =
       lines[i + 1] || ''
