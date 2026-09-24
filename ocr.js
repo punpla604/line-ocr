@@ -504,27 +504,28 @@ function parseVat(lines) {
   for (let i = 0; i < lines.length; i++) {
     const line = normalizeSpaces(lines[i])
 
-    if (!/\bvat\b/i.test(line)) {
-      continue
-    }
-
+    // ต้องเป็น VAT แล้วตามด้วยจำนวนเงินจริง ๆ
     // เช่น VAT 210.00
-    const sameLine = extractMoney(line)
+    const sameLine = line.match(
+      /\bvat\b\s*[:.]?\s*(\d{1,3}(?:,\d{3})*\.\d{2})/i
+    )
 
     if (sameLine) {
-      return cleanMoney(sameLine)
+      return cleanMoney(sameLine[1])
     }
 
-    // เช่น
+    // รองรับ:
     // VAT
     // 210.00
-    const next = lines[i + 1] || ''
+    //
+    // แต่ต้องเป็น "บรรทัดถัดไปทันที"
+    // และบรรทัด VAT ต้องจบด้วย VAT จริง ๆ
+    if (/\bvat\b\s*[:.]?$/i.test(line)) {
+      const next = normalizeSpaces(lines[i + 1] || '')
 
-    const nextMoney =
-      extractMoney(next)
-
-    if (nextMoney) {
-      return cleanMoney(nextMoney)
+      if (isMoney(next)) {
+        return cleanMoney(next)
+      }
     }
   }
 
