@@ -101,7 +101,7 @@ function isDash(text) {
 }
 
 // ==================================================
-// Date
+// Date - STRICT / NO GUESS
 // ==================================================
 
 const MONTHS = [
@@ -121,14 +121,25 @@ const MONTHS = [
 
 function parseDateStrict(lines) {
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
+    const line = normalizeSpaces(lines[i])
 
-    if (!/^date\b/i.test(line)) {
-      continue
-    }
+    /*
+      รองรับ OCR ที่อ่าน Date เป็น Dale
+
+      ตัวอย่างที่ยอมรับ:
+      Date 31 January 2026 Time 18:01:02
+      Dale 31 January 2026 Time 18:01:02
+
+      ตัวอย่างที่ "ไม่ยอมรับ":
+      Date 31 Jandary 2026
+      Date 31 Jan 2026
+      Date 31 Janu 2026
+
+      ห้ามแก้คำเดือน OCR เอง
+    */
 
     const m = line.match(
-      /^Date\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:\s+Time\s+(\d{2}:\d{2}:\d{2}))?/i
+      /^(?:Date|Dale)\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:\s+Time\s+(\d{2}:\d{2}:\d{2}))?/i
     )
 
     if (!m) {
@@ -136,15 +147,24 @@ function parseDateStrict(lines) {
     }
 
     const day = m[1]
-    const month = m[2]
+    const monthText = m[2]
     const year = m[3]
     const time = m[4] || ''
 
+    /*
+      ต้องตรงกับชื่อเดือนเต็มเท่านั้น
+      ห้ามใช้ startsWith
+      ห้ามใช้ fuzzy matching
+      ห้ามแก้ spelling
+    */
+
     const validMonth = MONTHS.find(
-      x => x.toLowerCase() === month.toLowerCase()
+      month =>
+        month.toLowerCase() ===
+        monthText.toLowerCase()
     )
 
-    // ไม่เดาเดือน
+    // เดือนผิด / OCR อ่านผิด
     if (!validMonth) {
       return {
         date: '',
@@ -155,12 +175,35 @@ function parseDateStrict(lines) {
     const dayNum = Number(day)
     const yearNum = Number(year)
 
+    // ตรวจเฉพาะค่าที่เป็นไปได้
     if (
       dayNum < 1 ||
       dayNum > 31 ||
       yearNum < 1900 ||
       yearNum > 2100
     ) {
+      return {
+        date: '',
+        time
+      }
+    }
+
+    /*
+      ตรวจจำนวนวันตามเดือนจริง
+      เช่น 31 February ต้องไม่ผ่าน
+    */
+
+    const monthIndex =
+      MONTHS.indexOf(validMonth)
+
+    const daysInMonth =
+      new Date(
+        yearNum,
+        monthIndex + 1,
+        0
+      ).getDate()
+
+    if (dayNum > daysInMonth) {
       return {
         date: '',
         time
