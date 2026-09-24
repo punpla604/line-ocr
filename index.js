@@ -955,7 +955,16 @@ ${messages}
               hn: value
             })
 
-            console.log('HN RESULT:', result)
+            console.log('HN RESULT:', JSON.stringify(result, null, 2))
+
+            console.log('HN FIRST ROW:', JSON.stringify(
+              result?.list?.[0],
+              null,
+              2
+            ))
+
+            console.log('HN NAME:', result?.list?.[0]?.name)
+            console.log('HN PAYMENT:', result?.list?.[0]?.paymentType)
 
             resetState(userId)
 
