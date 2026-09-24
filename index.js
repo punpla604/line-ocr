@@ -614,8 +614,7 @@ DATE ตัวอย่าง:
 พิมพ์เลขเดือน 01 - 12
 
 ตัวอย่าง:
-02 = กุมภาพันธ์
-11 = พฤศจิกายน`
+01 = มกราคม`
           )
 
           return res.sendStatus(200)
@@ -663,7 +662,7 @@ DATE ตัวอย่าง:
 
             await reply(
               event.replyToken,
-              '❌ เดือนไม่ถูกต้องครับ\nต้องเป็น 01 ถึง 12 เท่านั้น\nตัวอย่าง 01 หรือ 12\nหรือพิมพ์ "ยกเลิก"'
+              '❌ เดือนไม่ถูกต้องครับ\nต้องเป็น 01 ถึง 12 เท่านั้น\nหรือพิมพ์ "ยกเลิก"'
             )
 
             return res.sendStatus(200)
@@ -679,15 +678,15 @@ DATE ตัวอย่าง:
             event.replyToken,
             `📅 เดือน ${month}
 
-        กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+            กรุณาพิมพ์ปี ค.ศ. 4 หลัก
 
-        ปีที่สามารถค้นหาได้:
-        ${getYearRangeText()}
+            ปีที่สามารถค้นหาได้:
+            ${getYearRangeText()}
 
-        ตัวอย่าง:
-        2026
+            ตัวอย่าง:
+            2026
 
-        ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"`
+            ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"`
           )
 
           return res.sendStatus(200)
@@ -717,15 +716,15 @@ DATE ตัวอย่าง:
               event.replyToken,
               `📅 แก้ปี
 
-        กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+              กรุณาพิมพ์ปี ค.ศ. 4 หลัก
 
-        ปีที่สามารถค้นหาได้:
-        ${getYearRangeText()}
+              ปีที่สามารถค้นหาได้:
+              ${getYearRangeText()}
 
-        ตัวอย่าง:
-        2026
+              ตัวอย่าง:
+              2026
 
-        หรือพิมพ์ "ยกเลิก"`
+              หรือพิมพ์ "ยกเลิก"`
             )
 
             return res.sendStatus(200)
@@ -741,17 +740,17 @@ DATE ตัวอย่าง:
             const minYear = currentYear - 5
 
             await reply(
-              event.replyToken,
-              `❌ ปีไม่ถูกต้องครับ
+            event.replyToken,
+            `❌ ปีไม่ถูกต้องครับ
 
-        ปีต้องอยู่ระหว่าง ${minYear} - ${currentYear}
+            ปีต้องอยู่ระหว่าง ${minYear} - ${currentYear}
 
-        ไม่สามารถเลือกปีอนาคตได้
-        และย้อนหลังเกิน 5 ปีไม่ได้
+            ไม่สามารถเลือกปีอนาคตได้
+            และย้อนหลังเกิน 5 ปีไม่ได้
 
-        กรุณาพิมพ์ปีใหม่อีกครั้ง
-        หรือพิมพ์ "แก้เดือน"
-        หรือ "ยกเลิก"`
+            กรุณาพิมพ์ปีใหม่อีกครั้ง
+            หรือพิมพ์ "แก้เดือน"
+            หรือ "ยกเลิก"`
             )
 
             return res.sendStatus(200)
@@ -764,21 +763,21 @@ DATE ตัวอย่าง:
           state.searchWaitingSince = Date.now()
 
           await reply(
-            event.replyToken,
-            `📅 ช่วงค้นหา
+          event.replyToken,
+          `📅 ช่วงค้นหา
 
-        เดือน: ${state.searchMonth}
-        ปี: ${state.searchYear}
+          เดือน: ${state.searchMonth}
+          ปี: ${state.searchYear}
 
-        เลือกประเภทค้นหา (พิมพ์เลข):
+          เลือกประเภทค้นหา (พิมพ์เลข):
 
-        1) BN
-        2) HN
-        3) NAME
-        4) DATE
+          1) BN
+          2) HN
+          3) NAME
+          4) DATE
 
-        ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"
-        ถ้าต้องการแก้ปี พิมพ์ "แก้ปี"`
+          ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"
+          ถ้าต้องการแก้ปี พิมพ์ "แก้ปี"`
           )
 
           return res.sendStatus(200)
@@ -830,7 +829,7 @@ DATE ตัวอย่าง:
 
           if (state.searchType === 'NAME') {
             hint =
-              'พิมพ์ชื่อคนไข้ เช่น Pun Kung'
+              'พิมพ์ชื่อคนไข้'
           }
 
           if (state.searchType === 'DATE') {
@@ -1034,41 +1033,52 @@ ${messages}
           // HN
           // ==================================================
 
-
           if (state.searchType === 'HN') {
 
-            console.log('SEARCH HN:', {
-              employeeCode,
-              month: state.searchMonth,
-              year: state.searchYear,
-              value
-            })
+            console.log(
+              'SEARCH HN:',
+              {
+                employeeCode,
+                month,
+                year,
+                value
+              }
+            )
 
-            const result = await querySheet({
-              action: 'findByHN',
-              employeeCode: employeeCode,
-              month: state.searchMonth,
-              year: state.searchYear,
-              hn: value
-            })
+            const result =
+              await querySheet({
+                action: 'findByHN',
+                ...baseParams,
+                hn: value
+              })
 
-            console.log('HN RESULT:', JSON.stringify(result, null, 2))
+            console.log(
+              'HN RESULT:',
+              result
+            )
+
+            const list =
+              Array.isArray(result?.list)
+                ? result.list
+                : []
 
             resetState(userId)
 
-            const list = Array.isArray(result?.list)
-              ? result.list
-              : []
-
             if (list.length === 0) {
+
               await reply(
                 event.replyToken,
                 `❌ ไม่พบข้อมูลครับ 😅
 
           Employee: ${employeeCode}
-          Month: ${state.searchMonth}
-          Year: ${state.searchYear}
+
+          Month: ${month}
+
+          Year: ${year}
+
           HN: ${value}
+
+          ลองตรวจสอบข้อมูลอีกครั้งครับ
 
           พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
               )
@@ -1076,33 +1086,35 @@ ${messages}
               return res.sendStatus(200)
             }
 
-            const preview = list
-              .slice(0, 10)
-              .map((r, i) => {
-                return `🧾 รายการที่ ${i + 1}
+            // HN แสดงผลเหมือน BN / NAME
+            const preview =
+              list
+                .slice(0, 10)
+                .map((d, i) =>
+                  formatResultItem(d, i)
+                )
+                .join(
+                  '\n\n--------------------\n\n'
+                )
 
-          BN: ${r.bn || '-'}
-          HN: ${r.hn || value || '-'}
-          Name: ${r.name || '-'}
-          Date: ${r.dateShort || r.dateText || '-'}
-          Payment: ${r.paymentType || '-'}
-          Total: ${formatNumber(r.total)}
-          Doctor Fee: ${formatNumber(r.doctorFee)}
-          Hospital & Nursing: ${formatNumber(r.hospitalNursing)}
-          Other: ${formatNumber(r.other)}`
-              })
-              .join('\n\n--------------------\n\n')
+            const moreText =
+              list.length > 10
+                ? `\n\nแสดง 10 จาก ${list.length} รายการ`
+                : ''
 
             await reply(
               event.replyToken,
               `🔎 พบทั้งหมด ${list.length} รายการ
 
           Employee: ${employeeCode}
+
+          Month: ${month}
+
+          Year: ${year}
+
           HN: ${value}
 
-          ${preview}
-
-          ${list.length > 10 ? '(แสดงสูงสุด 10 รายการ)' : ''}
+          ${preview}${moreText}
 
           พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
             )
