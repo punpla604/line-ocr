@@ -273,7 +273,26 @@ function isValidMonth(text) {
 // ==================================================
 
 function isValidYear(text) {
-  return /^\d{4}$/.test(text)
+  if (!/^\d{4}$/.test(text)) {
+    return false
+  }
+
+  const currentYear = new Date().getFullYear()
+  const minYear = currentYear - 5
+  const year = Number(text)
+
+  return year >= minYear && year <= currentYear
+}
+
+// ==================================================
+// YEAR RANGE
+// ==================================================
+
+function getYearRangeText() {
+  const currentYear = new Date().getFullYear()
+  const minYear = currentYear - 5
+
+  return `${minYear} - ${currentYear}`
 }
 
 // ==================================================
@@ -451,8 +470,6 @@ app.post('/webhook', async (req, res) => {
 DATE ตัวอย่าง:
 11/02/2026
 
-สามารถพบได้หลายรายการ
-
 พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน`
         )
 
@@ -519,7 +536,7 @@ DATE ตัวอย่าง:
 
             await reply(
               event.replyToken,
-              '❌ รหัสพนักงานไม่ถูกต้องครับ\nตัวอย่าง A0001 ถึง A2000\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
+              '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
             )
 
             return res.sendStatus(200)
@@ -576,7 +593,7 @@ DATE ตัวอย่าง:
 
             await reply(
               event.replyToken,
-              '❌ รหัสพนักงานไม่ถูกต้องครับ\nตัวอย่าง A0001 ถึง A2000\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
+              '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
             )
 
             return res.sendStatus(200)
@@ -614,11 +631,39 @@ DATE ตัวอย่าง:
 
           const month = text.trim()
 
+          // ------------------------------------------
+          // แก้เดือน
+          // ------------------------------------------
+
+          if (month === 'แก้เดือน') {
+
+            state.step = 'waitingSearchMonth'
+            state.searchWaitingSince = Date.now()
+
+            await reply(
+              event.replyToken,
+              `📅 แก้เดือน
+
+        กรุณาพิมพ์เดือน 01 - 12
+
+        ตัวอย่าง:
+        01 = มกราคม
+
+        หรือพิมพ์ "ยกเลิก"`
+            )
+
+            return res.sendStatus(200)
+          }
+
+          // ------------------------------------------
+          // ตรวจสอบเดือน
+          // ------------------------------------------
+
           if (!isValidMonth(month)) {
 
             await reply(
               event.replyToken,
-              '❌ เดือนต้องเป็น 01 ถึง 12 ครับ\nตัวอย่าง 02 หรือ 11\nหรือพิมพ์ "ยกเลิก"'
+              '❌ เดือนไม่ถูกต้องครับ\nต้องเป็น 01 ถึง 12 เท่านั้น\nตัวอย่าง 01 หรือ 12\nหรือพิมพ์ "ยกเลิก"'
             )
 
             return res.sendStatus(200)
@@ -626,7 +671,7 @@ DATE ตัวอย่าง:
 
           state.searchMonth = month
 
-          // ขั้นต่อไป = เลือกปี
+          // ไปเลือกปี
           state.step = 'waitingSearchYear'
           state.searchWaitingSince = Date.now()
 
@@ -634,14 +679,20 @@ DATE ตัวอย่าง:
             event.replyToken,
             `📅 เดือน ${month}
 
-กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+        กรุณาพิมพ์ปี ค.ศ. 4 หลัก
 
-ตัวอย่าง:
-2026`
+        ปีที่สามารถค้นหาได้:
+        ${getYearRangeText()}
+
+        ตัวอย่าง:
+        2026
+
+        ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"`
           )
 
           return res.sendStatus(200)
         }
+
 
         // ==================================================
         // SEARCH YEAR
@@ -653,11 +704,54 @@ DATE ตัวอย่าง:
 
           const year = text.trim()
 
-          if (!isValidYear(year)) {
+          // ------------------------------------------
+          // แก้ปี
+          // ------------------------------------------
+
+          if (year === 'แก้ปี') {
+
+            state.step = 'waitingSearchYear'
+            state.searchWaitingSince = Date.now()
 
             await reply(
               event.replyToken,
-              '❌ ปีต้องเป็น ค.ศ. 4 หลักครับ\nตัวอย่าง 2026\nหรือพิมพ์ "ยกเลิก"'
+              `📅 แก้ปี
+
+        กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+
+        ปีที่สามารถค้นหาได้:
+        ${getYearRangeText()}
+
+        ตัวอย่าง:
+        2026
+
+        หรือพิมพ์ "ยกเลิก"`
+            )
+
+            return res.sendStatus(200)
+          }
+
+          // ------------------------------------------
+          // ตรวจสอบปี
+          // ------------------------------------------
+
+          if (!isValidYear(year)) {
+
+            const currentYear = new Date().getFullYear()
+            const minYear = currentYear - 5
+
+            await reply(
+              event.replyToken,
+              `❌ ปีไม่ถูกต้องครับ
+
+        ปีต้องอยู่ระหว่าง ${minYear} - ${currentYear}
+
+        ไม่สามารถเลือกปีอนาคตได้
+        และย้อนหลังเกิน 5 ปีไม่ได้
+
+        กรุณาพิมพ์ปีใหม่อีกครั้ง
+        หรือพิมพ์ "แก้เดือน"
+        หรือ "ยกเลิก"`
             )
 
             return res.sendStatus(200)
@@ -665,7 +759,7 @@ DATE ตัวอย่าง:
 
           state.searchYear = year
 
-          // ขั้นต่อไป = เลือกประเภท
+          // ไปเลือกประเภท
           state.step = 'chooseSearchType'
           state.searchWaitingSince = Date.now()
 
@@ -673,15 +767,18 @@ DATE ตัวอย่าง:
             event.replyToken,
             `📅 ช่วงค้นหา
 
-เดือน: ${state.searchMonth}
-ปี: ${state.searchYear}
+        เดือน: ${state.searchMonth}
+        ปี: ${state.searchYear}
 
-เลือกประเภทค้นหา (พิมพ์เลข):
+        เลือกประเภทค้นหา (พิมพ์เลข):
 
-1) BN
-2) HN
-3) NAME
-4) DATE`
+        1) BN
+        2) HN
+        3) NAME
+        4) DATE
+
+        ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"
+        ถ้าต้องการแก้ปี พิมพ์ "แก้ปี"`
           )
 
           return res.sendStatus(200)
@@ -956,15 +1053,6 @@ ${messages}
             })
 
             console.log('HN RESULT:', JSON.stringify(result, null, 2))
-
-            console.log('HN FIRST ROW:', JSON.stringify(
-              result?.list?.[0],
-              null,
-              2
-            ))
-
-            console.log('HN NAME:', result?.list?.[0]?.name)
-            console.log('HN PAYMENT:', result?.list?.[0]?.paymentType)
 
             resetState(userId)
 
