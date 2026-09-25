@@ -616,40 +616,109 @@ async function querySheet(
   // FILTER COMMON
   // --------------------------------------------------
 
-  let filtered =
-    data.filter(item => {
+  function normalizeText(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+  }
 
-      if (
-        employeeCode &&
-        String(
-          item.employeeCode
-        ).trim()
-          .toUpperCase() !==
-          employeeCode.toUpperCase()
-      ) {
-        return false
+  function getRowMonthYear(item) {
+    const rawDate = String(
+      item.date || item.dateText || ''
+    ).trim()
+
+    // YYYY-MM-DD
+    let match = rawDate.match(
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+    )
+
+    if (match) {
+      return {
+        year: match[1],
+        month: String(match[2]).padStart(2, '0')
       }
+    }
+
+    // DD/MM/YYYY
+    match = rawDate.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+    )
+
+    if (match) {
+      return {
+        year: match[3],
+        month: String(match[2]).padStart(2, '0')
+      }
+    }
+
+    // DD Month YYYY
+    const parsedDate = new Date(rawDate)
+
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return {
+        year: String(
+          parsedDate.getFullYear()
+        ),
+        month: String(
+          parsedDate.getMonth() + 1
+        ).padStart(2, '0')
+      }
+    }
+
+    // ถ้า Sheet มี Month / Year อยู่แล้ว
+    return {
+      year: String(
+        item.year || ''
+      ).trim(),
+      month: String(
+        item.month || ''
+      )
+        .trim()
+        .padStart(2, '0')
+    }
+  }
+
+  let filtered = data.filter(item => {
+
+    // -----------------------------------------------
+    // Employee
+    // -----------------------------------------------
+    if (
+      employeeCode &&
+      normalizeText(item.employeeCode) !==
+        normalizeText(employeeCode)
+    ) {
+      return false
+    }
+
+    // -----------------------------------------------
+    // Month / Year
+    // ใช้วันที่จริงจาก Sheet เป็นหลัก
+    // -----------------------------------------------
+    if (month || year) {
+
+      const rowDate =
+        getRowMonthYear(item)
 
       if (
         month &&
-        String(
-          item.month
-        ).trim() !== month
+        rowDate.month !==
+          String(month).padStart(2, '0')
       ) {
         return false
       }
 
       if (
         year &&
-        String(
-          item.year
-        ).trim() !== year
+        rowDate.year !==
+          String(year)
       ) {
         return false
       }
+    }
 
-      return true
-    })
+    return true
+  })
 
   // --------------------------------------------------
   // FIND BY BN
