@@ -20,7 +20,6 @@ const SHEET_NAME = 'Sheet1'
 // ==================================================
 
 function getGoogleAuth() {
-
   if (!GOOGLE_SERVICE_ACCOUNT_EMAIL) {
     throw new Error(
       '❌ Missing env: GOOGLE_SERVICE_ACCOUNT_EMAIL'
@@ -39,36 +38,16 @@ function getGoogleAuth() {
     )
   }
 
-  // รองรับทั้ง:
-  // 1. -----BEGIN PRIVATE KEY-----\nxxxxx\n-----END PRIVATE KEY-----
-  // 2. -----BEGIN PRIVATE KEY-----
-  //    xxxxx
-  //    -----END PRIVATE KEY-----
+  let privateKey =
+    GOOGLE_PRIVATE_KEY
 
-  const privateKey = GOOGLE_PRIVATE_KEY
-    .replace(/\\n/g, '\n')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .trim()
+  // รองรับกรณี Render เก็บ \n เป็นตัวอักษร
+  privateKey =
+    privateKey.replace(/\\n/g, '\n')
 
-  console.log(
-    'GOOGLE SERVICE ACCOUNT:',
-    GOOGLE_SERVICE_ACCOUNT_EMAIL
-  )
-
-  console.log(
-    'PRIVATE KEY FORMAT:',
-    privateKey.startsWith('-----BEGIN PRIVATE KEY-----')
-      ? 'OK'
-      : 'INVALID'
-  )
-
-  console.log(
-    'PRIVATE KEY END:',
-    privateKey.endsWith('-----END PRIVATE KEY-----')
-      ? 'OK'
-      : 'INVALID'
-  )
+  // รองรับกรณีมี quote ครอบทั้งค่า
+  privateKey =
+    privateKey.replace(/^"|"$/g, '')
 
   if (
     !privateKey.startsWith(
@@ -81,17 +60,16 @@ function getGoogleAuth() {
   }
 
   if (
-    !privateKey.endsWith(
+    !privateKey.includes(
       '-----END PRIVATE KEY-----'
     )
   ) {
     throw new Error(
-      '❌ GOOGLE_PRIVATE_KEY ไม่ได้ลงท้ายด้วย -----END PRIVATE KEY-----'
+      '❌ GOOGLE_PRIVATE_KEY ไม่มี -----END PRIVATE KEY-----'
     )
   }
 
   return new google.auth.GoogleAuth({
-
     credentials: {
       client_email:
         GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -103,72 +81,85 @@ function getGoogleAuth() {
     scopes: [
       'https://www.googleapis.com/auth/spreadsheets'
     ]
-
   })
 }
 
 // ==================================================
 // CONVERT DATA TO SHEET ROW
 // ==================================================
+//
+// Sheet1:
+//
+// A timestamp
+// B employeeCode
+// C bn
+// D dateText
+// E timeText
+// F hn
+// G name
+// H paymentType
+// I vat
+// J total
+// K doctorFee
+// L hospital&nursing
+// M other
+// N itemJson
+// O raw
+//
+// ==================================================
 
 function toSheetRow(data) {
-
   const itemsJson =
-    JSON.stringify(data.items || [])
+    JSON.stringify(
+      data.items || []
+    )
 
   return [
-
-    // A - Timestamp
+    // A - timestamp
     data.timestamp ||
       new Date().toISOString(),
 
-    // B - Employee Code
+    // B - employeeCode
     data.employeeCode || '',
 
-    // C - Receipt No
-    data.receiptNo ||
-      data.bn ||
-      '',
+    // C - bn
+    data.bn || data.receiptNo || '',
 
-    // D - BN
-    data.bn || '',
-
-    // E - HN
-    data.hn || '',
-
-    // F - Receipt Date
+    // D - dateText
     data.receiptDateRaw || '',
 
-    // G - Time
+    // E - timeText
     data.timeText || '',
 
-    // H - Patient Name
+    // F - hn
+    data.hn || '',
+
+    // G - name
     data.patientName || '',
 
-    // I - Payment Type
+    // H - paymentType
     data.paymentType || '',
 
-    // J - VAT
+    // I - vat
     data.vat || '',
 
-    // K - Total
+    // J - total
     data.total || '',
 
-    // L - Doctor Fee
+    // K - doctorFee
     data.doctorFee || '',
 
-    // M - Hospital & Nursing
+    // L - hospital&nursing
     data.hospitalNursing || '',
 
-    // N - Other
+    // M - other
     data.other || '',
 
-    // O - Items JSON
+    // N - itemJson
     itemsJson,
 
-    // P - Raw OCR
+    // O - raw
     data.raw || ''
-
   ]
 }
 
@@ -177,7 +168,6 @@ function toSheetRow(data) {
 // ==================================================
 
 async function sendToSheet(data) {
-
   const auth =
     getGoogleAuth()
 
@@ -191,7 +181,6 @@ async function sendToSheet(data) {
     toSheetRow(data)
 
   try {
-
     console.log(
       '=============================='
     )
@@ -221,12 +210,11 @@ async function sendToSheet(data) {
 
     const response =
       await sheets.spreadsheets.values.append({
-
         spreadsheetId:
           SHEET_ID,
 
         range:
-          `${SHEET_NAME}!A:P`,
+          `${SHEET_NAME}!A:O`,
 
         valueInputOption:
           'USER_ENTERED',
@@ -235,13 +223,10 @@ async function sendToSheet(data) {
           'INSERT_ROWS',
 
         requestBody: {
-
           values: [
             row
           ]
-
         }
-
       })
 
     console.log(
@@ -269,7 +254,6 @@ async function sendToSheet(data) {
     return response.data
 
   } catch (err) {
-
     console.error(
       '=============================='
     )
@@ -279,7 +263,6 @@ async function sendToSheet(data) {
     )
 
     if (err.response) {
-
       console.error(
         'STATUS:',
         err.response.status
@@ -289,14 +272,11 @@ async function sendToSheet(data) {
         'DATA:',
         err.response.data
       )
-
     } else {
-
       console.error(
         'MESSAGE:',
         err.message
       )
-
     }
 
     console.error(
@@ -304,9 +284,7 @@ async function sendToSheet(data) {
     )
 
     throw err
-
   }
-
 }
 
 // ==================================================
