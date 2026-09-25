@@ -627,7 +627,18 @@ async function querySheet(
       item.date || item.dateText || ''
     ).trim()
 
+    console.log(
+      'CHECK ROW DATE:',
+      {
+        rawDate,
+        itemMonth: item.month,
+        itemYear: item.year
+      }
+    )
+
+    // --------------------------------------------------
     // YYYY-MM-DD
+    // --------------------------------------------------
     let match = rawDate.match(
       /^(\d{4})-(\d{1,2})-(\d{1,2})$/
     )
@@ -639,7 +650,9 @@ async function querySheet(
       }
     }
 
+    // --------------------------------------------------
     // DD/MM/YYYY
+    // --------------------------------------------------
     match = rawDate.match(
       /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
     )
@@ -651,25 +664,52 @@ async function querySheet(
       }
     }
 
+    // --------------------------------------------------
     // DD Month YYYY
-    const parsedDate = new Date(rawDate)
+    // เช่น 31 January 2026
+    // --------------------------------------------------
+    match = rawDate.match(
+      /^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/i
+    )
 
-    if (!Number.isNaN(parsedDate.getTime())) {
-      return {
-        year: String(
-          parsedDate.getFullYear()
-        ),
-        month: String(
-          parsedDate.getMonth() + 1
-        ).padStart(2, '0')
+    if (match) {
+      const months = {
+        january: '01',
+        february: '02',
+        march: '03',
+        april: '04',
+        may: '05',
+        june: '06',
+        july: '07',
+        august: '08',
+        september: '09',
+        october: '10',
+        november: '11',
+        december: '12'
+      }
+
+      const monthNumber =
+        months[
+          match[2].toLowerCase()
+        ]
+
+      if (monthNumber) {
+        return {
+          year: match[3],
+          month: monthNumber
+        }
       }
     }
 
-    // ถ้า Sheet มี Month / Year อยู่แล้ว
+    // --------------------------------------------------
+    // ถ้าอ่านจาก Date ไม่ได้
+    // ใช้ Month / Year จาก Sheet
+    // --------------------------------------------------
     return {
       year: String(
         item.year || ''
       ).trim(),
+
       month: String(
         item.month || ''
       )
@@ -678,47 +718,121 @@ async function querySheet(
     }
   }
 
+  // --------------------------------------------------
+  // FILTER
+  // --------------------------------------------------
+
   let filtered = data.filter(item => {
 
-    // -----------------------------------------------
-    // Employee
-    // -----------------------------------------------
+    // --------------------------------------------------
+    // EMPLOYEE
+    // --------------------------------------------------
+
+    const itemEmployee =
+      normalizeText(
+        item.employeeCode
+      )
+
+    const searchEmployee =
+      normalizeText(
+        employeeCode
+      )
+
     if (
-      employeeCode &&
-      normalizeText(item.employeeCode) !==
-        normalizeText(employeeCode)
+      searchEmployee &&
+      itemEmployee !== searchEmployee
     ) {
       return false
     }
 
-    // -----------------------------------------------
-    // Month / Year
-    // ใช้วันที่จริงจาก Sheet เป็นหลัก
-    // -----------------------------------------------
-    if (month || year) {
+    // --------------------------------------------------
+    // MONTH / YEAR
+    // --------------------------------------------------
 
-      const rowDate =
-        getRowMonthYear(item)
+    const rowDate =
+      getRowMonthYear(item)
 
-      if (
-        month &&
-        rowDate.month !==
-          String(month).padStart(2, '0')
-      ) {
-        return false
-      }
+    const rowMonth =
+      String(
+        rowDate.month || ''
+      )
+        .trim()
+        .padStart(2, '0')
 
-      if (
-        year &&
-        rowDate.year !==
-          String(year)
-      ) {
-        return false
-      }
+    const rowYear =
+      String(
+        rowDate.year || ''
+      ).trim()
+
+    const searchMonth =
+      String(month || '')
+        .trim()
+        .padStart(2, '0')
+
+    const searchYear =
+      String(year || '')
+        .trim()
+
+    if (
+      searchMonth &&
+      rowMonth !== searchMonth
+    ) {
+      return false
+    }
+
+    if (
+      searchYear &&
+      rowYear !== searchYear
+    ) {
+      return false
     }
 
     return true
   })
+
+  // --------------------------------------------------
+  // DEBUG
+  // --------------------------------------------------
+
+  console.log(
+    'FILTERED DATA COUNT:',
+    filtered.length
+  )
+
+  console.log(
+    'FILTERED DATA:',
+    filtered.slice(0, 20).map(item => ({
+      employeeCode:
+        item.employeeCode,
+
+      bn:
+        item.bn,
+
+      hn:
+        item.hn,
+
+      name:
+        item.name,
+
+      date:
+        item.date,
+
+      month:
+        item.month,
+
+      year:
+        item.year
+    }))
+  )
+
+  // --------------------------------------------------
+  // DEBUG FIRST ROW
+  // --------------------------------------------------
+
+  console.log(
+    'FIRST ROW OBJECT:',
+    data[0]
+  )
 
   // --------------------------------------------------
   // FIND BY BN
