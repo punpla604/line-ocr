@@ -1,94 +1,222 @@
-const axios = require('axios')
+const { google } = require('googleapis')
 
-const SHEET_URL = process.env.SHEET_URL
-const SHEET_SECRET = process.env.SHEET_SECRET
+// ==================================================
+// GOOGLE SERVICE ACCOUNT
+// ==================================================
 
-function toSheetPayload(data) {
-  const itemsJson = JSON.stringify(data.items || [])
+const GOOGLE_SERVICE_ACCOUNT_EMAIL =
+  process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
 
-  return {
-    timestamp: data.timestamp || new Date().toISOString(),
-    employeeCode: data.employeeCode || '',
+const GOOGLE_PRIVATE_KEY =
+  process.env.GOOGLE_PRIVATE_KEY
 
-    // เลขใบเสร็จ
-    receiptNo: data.receiptNo || data.bn || '',
-    bn: data.bn || '',
-    hn: data.hn || '',
+const SHEET_ID =
+  process.env.SHEET_ID
 
-    // วันที่/เวลา
-    receiptDateRaw: data.receiptDateRaw || '',
-    timeText: data.timeText || '',
+const SHEET_NAME = 'Sheet1'
 
-    // ชื่อคนไข้
-    patientName: data.patientName || '',
+// ==================================================
+// GOOGLE AUTH
+// ==================================================
 
-    // จ่ายด้วยอะไร
-    paymentType: data.paymentType || '',
-
-    // VAT / Total
-    vat: data.vat || '',
-    total: data.total || '',
-
-    // ==========================================
-    // ค่าใช้จ่าย 3 หมวด
-    // ==========================================
-
-    doctorFee: data.doctorFee || '',
-
-    hospitalNursing: data.hospitalNursing || '',
-
-    other: data.other || '',
-
-    // ==========================================
-    // items
-    // ==========================================
-
-    itemjson: itemsJson,
-    itemsJson: itemsJson,
-
-    // raw text
-    raw: data.raw || ''
+function getGoogleAuth() {
+  if (!GOOGLE_SERVICE_ACCOUNT_EMAIL) {
+    throw new Error(
+      '❌ Missing env: GOOGLE_SERVICE_ACCOUNT_EMAIL'
+    )
   }
+
+  if (!GOOGLE_PRIVATE_KEY) {
+    throw new Error(
+      '❌ Missing env: GOOGLE_PRIVATE_KEY'
+    )
+  }
+
+  if (!SHEET_ID) {
+    throw new Error(
+      '❌ Missing env: SHEET_ID'
+    )
+  }
+
+  return new google.auth.GoogleAuth({
+    credentials: {
+      client_email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
+
+      private_key:
+        GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n')
+    },
+
+    scopes: [
+      'https://www.googleapis.com/auth/spreadsheets'
+    ]
+  })
 }
 
+// ==================================================
+// CONVERT DATA TO SHEET ROW
+// ==================================================
+
+function toSheetRow(data) {
+  const itemsJson =
+    JSON.stringify(data.items || [])
+
+  return [
+    // A - Timestamp
+    data.timestamp ||
+      new Date().toISOString(),
+
+    // B - Employee Code
+    data.employeeCode || '',
+
+    // C - Receipt No
+    data.receiptNo ||
+      data.bn ||
+      '',
+
+    // D - BN
+    data.bn || '',
+
+    // E - HN
+    data.hn || '',
+
+    // F - Receipt Date
+    data.receiptDateRaw || '',
+
+    // G - Time
+    data.timeText || '',
+
+    // H - Patient Name
+    data.patientName || '',
+
+    // I - Payment Type
+    data.paymentType || '',
+
+    // J - VAT
+    data.vat || '',
+
+    // K - Total
+    data.total || '',
+
+    // L - Doctor Fee
+    data.doctorFee || '',
+
+    // M - Hospital & Nursing
+    data.hospitalNursing || '',
+
+    // N - Other
+    data.other || '',
+
+    // O - Items JSON
+    itemsJson,
+
+    // P - Raw OCR
+    data.raw || ''
+  ]
+}
+
+// ==================================================
+// SEND TO GOOGLE SHEET
+// ==================================================
+
 async function sendToSheet(data) {
-  if (!SHEET_URL) {
-    throw new Error('❌ Missing env: SHEET_URL')
-  }
 
-  if (!SHEET_SECRET) {
-    throw new Error('❌ Missing env: SHEET_SECRET')
-  }
+  const auth = getGoogleAuth()
 
-  const payload = toSheetPayload(data)
+  const sheets = google.sheets({
+    version: 'v4',
+    auth
+  })
+
+  const row = toSheetRow(data)
 
   try {
-    const res = await axios.post(
-      SHEET_URL,
-      payload,
-      {
-        timeout: 15000,
 
-        headers: {
-          'Content-Type': 'application/json',
-          'x-secret': SHEET_SECRET
-        }
-      }
+    console.log(
+      '=============================='
     )
 
     console.log(
-      '📊 ส่งข้อมูลเข้า Google Sheet แล้ว:',
-      res.data
+      'GOOGLE SHEET SAVE'
     )
 
-    return res.data
+    console.log(
+      'SHEET ID:',
+      SHEET_ID
+    )
+
+    console.log(
+      'SHEET NAME:',
+      SHEET_NAME
+    )
+
+    console.log(
+      'ROW:',
+      row
+    )
+
+    console.log(
+      '=============================='
+    )
+
+    const response =
+      await sheets.spreadsheets.values.append({
+
+        spreadsheetId:
+          SHEET_ID,
+
+        range:
+          `${SHEET_NAME}!A:P`,
+
+        valueInputOption:
+          'USER_ENTERED',
+
+        insertDataOption:
+          'INSERT_ROWS',
+
+        requestBody: {
+          values: [
+            row
+          ]
+        }
+
+      })
+
+    console.log(
+      '=============================='
+    )
+
+    console.log(
+      '✅ GOOGLE SHEET SAVE SUCCESS'
+    )
+
+    console.log(
+      'UPDATED RANGE:',
+      response.data.updates?.updatedRange
+    )
+
+    console.log(
+      'UPDATED ROWS:',
+      response.data.updates?.updatedRows
+    )
+
+    console.log(
+      '=============================='
+    )
+
+    return response.data
 
   } catch (err) {
+
     console.error(
-      '❌ ส่งเข้า Google Sheet ไม่สำเร็จ'
+      '=============================='
+    )
+
+    console.error(
+      '❌ GOOGLE SHEET SAVE ERROR'
     )
 
     if (err.response) {
+
       console.error(
         'STATUS:',
         err.response.status
@@ -98,18 +226,26 @@ async function sendToSheet(data) {
         'DATA:',
         err.response.data
       )
+
     } else {
+
       console.error(
-        'ERROR:',
+        'MESSAGE:',
         err.message
       )
+
     }
+
+    console.error(
+      '=============================='
+    )
 
     throw err
   }
 }
 
+// ==================================================
+// EXPORT
+// ==================================================
+
 module.exports = sendToSheet
-
-
-
