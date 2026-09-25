@@ -2,6 +2,7 @@ require('dotenv').config()
 
 const express = require('express')
 const axios = require('axios')
+const { google } = require('googleapis')
 
 const sendToSheet = require('./send-to-sheet')
 
@@ -16,7 +17,59 @@ app.use(express.json())
 
 const LINE_TOKEN = process.env.LINE_TOKEN
 const SHEET_ID = process.env.SHEET_ID
-const SHEET_SECRET = process.env.SHEET_SECRET
+const GOOGLE_SERVICE_ACCOUNT =
+  process.env.GOOGLE_SERVICE_ACCOUNT
+
+// ==================================================
+// GOOGLE SHEETS
+// ==================================================
+
+let sheetsClient = null
+
+function getSheetsClient() {
+  if (sheetsClient) {
+    return sheetsClient
+  }
+
+  if (!SHEET_ID) {
+    throw new Error('Missing env: SHEET_ID')
+  }
+
+  if (!GOOGLE_SERVICE_ACCOUNT) {
+    throw new Error(
+      'Missing env: GOOGLE_SERVICE_ACCOUNT'
+    )
+  }
+
+  let credentials
+
+  try {
+    credentials =
+      JSON.parse(GOOGLE_SERVICE_ACCOUNT)
+  } catch (err) {
+    throw new Error(
+      'GOOGLE_SERVICE_ACCOUNT is not valid JSON'
+    )
+  }
+
+  const auth =
+    new google.auth.GoogleAuth({
+      credentials,
+      scopes: [
+        'https://www.googleapis.com/auth/spreadsheets'
+      ]
+    })
+
+  const googleSheets =
+    google.sheets({
+      version: 'v4',
+      auth
+    })
+
+  sheetsClient = googleSheets
+
+  return sheetsClient
+}
 
 // ==================================================
 // USER STATE
@@ -43,7 +96,10 @@ function defaultState() {
 
 function getState(userId) {
   if (!userState.has(userId)) {
-    userState.set(userId, defaultState())
+    userState.set(
+      userId,
+      defaultState()
+    )
   }
 
   return userState.get(userId)
@@ -51,7 +107,12 @@ function getState(userId) {
 
 function resetState(userId) {
   const state = defaultState()
-  userState.set(userId, state)
+
+  userState.set(
+    userId,
+    state
+  )
+
   return state
 }
 
@@ -60,7 +121,10 @@ function resetState(userId) {
 // ==================================================
 
 function isCancelMessage(text) {
-  const t = (text || '').trim().toLowerCase()
+  const t =
+    (text || '')
+      .trim()
+      .toLowerCase()
 
   return [
     'ยกเลิก',
@@ -75,7 +139,8 @@ function isCancelMessage(text) {
 // ==================================================
 
 function isHelpMessage(text) {
-  const t = (text || '').trim()
+  const t =
+    (text || '').trim()
 
   const keywords = [
     'ทำไง',
@@ -91,7 +156,9 @@ function isHelpMessage(text) {
     'วิธีใช้'
   ]
 
-  return keywords.some(k => t.includes(k))
+  return keywords.some(k =>
+    t.includes(k)
+  )
 }
 
 // ==================================================
@@ -110,24 +177,36 @@ function isValidEmployeeCode(code) {
     return false
   }
 
-  const num = parseInt(code.slice(1), 10)
+  const num =
+    parseInt(
+      code.slice(1),
+      10
+    )
 
-  return num >= 1 && num <= 2000
+  return (
+    num >= 1 &&
+    num <= 2000
+  )
 }
 
 // ==================================================
 // TIMEOUT
 // ==================================================
 
-const WAIT_IMAGE_MS = 60 * 1000
-const WAIT_SEARCH_MS = 60 * 1000
+const WAIT_IMAGE_MS =
+  60 * 1000
+
+const WAIT_SEARCH_MS =
+  60 * 1000
 
 function isExpired(ts, ms) {
   if (!ts) {
     return false
   }
 
-  return Date.now() - ts > ms
+  return (
+    Date.now() - ts > ms
+  )
 }
 
 // ==================================================
@@ -143,24 +222,31 @@ function formatNumber(value) {
     return '0'
   }
 
-  const text = String(value)
-    .replace(/,/g, '')
-    .trim()
+  const text =
+    String(value)
+      .replace(/,/g, '')
+      .trim()
 
-  const num = Number(text)
+  const num =
+    Number(text)
 
   if (Number.isNaN(num)) {
     return String(value)
   }
 
-  return num.toLocaleString('en-US')
+  return num.toLocaleString(
+    'en-US'
+  )
 }
 
 // ==================================================
 // FORMAT SEARCH RESULT
 // ==================================================
 
-function formatResultItem(d, index) {
+function formatResultItem(
+  d,
+  index
+) {
   return `🧾 รายการที่ ${index + 1}
 
 BN: ${d.bn || '-'}
@@ -169,28 +255,49 @@ HN: ${d.hn || '-'}
 
 Name: ${d.name || '-'}
 
-Date: ${d.dateText || d.dateShort || '-'}
+Date: ${
+    d.dateText ||
+    d.dateShort ||
+    d.date ||
+    '-'
+  }
 
-Payment: ${d.paymentType || '-'}
+Payment: ${
+    d.paymentType ||
+    '-'
+  }
 
-Total: ${formatNumber(d.total)}
+Total: ${
+    formatNumber(d.total)
+  }
 
-Doctor Fee: ${formatNumber(d.doctorFee)}
+Doctor Fee: ${
+    formatNumber(
+      d.doctorFee
+    )
+  }
 
-Hospital & Nursing: ${formatNumber(
-    d.hospitalNursing ||
-    d.hospitalNursingFee ||
-    d.hospital_nursing
-  )}
+Hospital & Nursing: ${
+    formatNumber(
+      d.hospitalNursing ||
+      d.hospitalNursingFee ||
+      d.hospital_nursing
+    )
+  }
 
-Other: ${formatNumber(d.other)}`
+Other: ${
+    formatNumber(d.other)
+  }`
 }
 
 // ==================================================
 // LINE REPLY
 // ==================================================
 
-async function reply(replyToken, text) {
+async function reply(
+  replyToken,
+  text
+) {
   return axios.post(
     'https://api.line.me/v2/bot/message/reply',
     {
@@ -204,55 +311,447 @@ async function reply(replyToken, text) {
     },
     {
       headers: {
-        Authorization: `Bearer ${LINE_TOKEN}`,
-        'Content-Type': 'application/json'
+        Authorization:
+          `Bearer ${LINE_TOKEN}`,
+
+        'Content-Type':
+          'application/json'
       },
+
       timeout: 15000
     }
   )
 }
 
 // ==================================================
-// QUERY GOOGLE SHEET
+// GOOGLE SHEET READ
 // ==================================================
 
-async function querySheet(params = {}) {
-  if (!SHEET_ID) {
-    throw new Error('Missing env: SHEET_ID')
-  }
+async function getSheetValues(
+  range
+) {
+  const sheets =
+    getSheetsClient()
 
-  if (!SHEET_SECRET) {
-    throw new Error('Missing env: SHEET_SECRET')
-  }
-
-  const queryParams = {
-    ...params,
-    sheetId: SHEET_ID,
-    secret: SHEET_SECRET
-  }
-
-  console.log('SHEET QUERY:', queryParams)
-
-  try {
-    const res = await axios.get(
-      process.env.SHEET_URL || '',
+  const res =
+    await sheets.spreadsheets.values.get(
       {
-        params: queryParams,
-        timeout: 60000
+        spreadsheetId:
+          SHEET_ID,
+
+        range,
+
+        majorDimension:
+          'ROWS'
       }
     )
 
-    console.log('SHEET RESPONSE:', res.data)
+  return (
+    res.data.values || []
+  )
+}
 
-    return res.data
+// ==================================================
+// FIND SHEET DATA
+// ==================================================
 
-  } catch (err) {
-    console.error(
-      'SHEET QUERY ERROR:',
-      err.response?.data || err.message
+async function querySheet(
+  params = {}
+) {
+  if (!SHEET_ID) {
+    throw new Error(
+      'Missing env: SHEET_ID'
+    )
+  }
+
+  const sheets =
+    getSheetsClient()
+
+  const action =
+    params.action || ''
+
+  const employeeCode =
+    String(
+      params.employeeCode || ''
+    ).trim()
+
+  const month =
+    String(
+      params.month || ''
+    ).trim()
+
+  const year =
+    String(
+      params.year || ''
+    ).trim()
+
+  const bn =
+    String(
+      params.bn || ''
+    ).trim()
+
+  const hn =
+    String(
+      params.hn || ''
+    ).trim()
+
+  const name =
+    String(
+      params.name || ''
+    ).trim()
+
+  const date =
+    String(
+      params.date || ''
+    ).trim()
+
+  console.log(
+    'GOOGLE SHEET QUERY:',
+    {
+      action,
+      employeeCode,
+      month,
+      year,
+      bn,
+      hn,
+      name,
+      date
+    }
+  )
+
+  // --------------------------------------------------
+  // อ่านข้อมูลจาก Sheet
+  // --------------------------------------------------
+
+  const response =
+    await sheets.spreadsheets.values.get(
+      {
+        spreadsheetId:
+          SHEET_ID,
+
+        range:
+          process.env.SHEET_RANGE ||
+          'Sheet1!A:Z',
+
+        majorDimension:
+          'ROWS'
+      }
     )
 
-    throw err
+  const rows =
+    response.data.values || []
+
+  if (rows.length === 0) {
+    return {
+      found: false,
+      list: []
+    }
+  }
+
+  // --------------------------------------------------
+  // HEADER
+  // --------------------------------------------------
+
+  const headers =
+    rows[0].map(header =>
+      String(header || '')
+        .trim()
+        .toLowerCase()
+    )
+
+  const dataRows =
+    rows.slice(1)
+
+  function getColumn(
+    row,
+    possibleNames
+  ) {
+    for (
+      const possibleName
+      of possibleNames
+    ) {
+      const index =
+        headers.indexOf(
+          possibleName
+            .toLowerCase()
+        )
+
+      if (
+        index !== -1
+      ) {
+        return row[index] || ''
+      }
+    }
+
+    return ''
+  }
+
+  // --------------------------------------------------
+  // CONVERT ROW
+  // --------------------------------------------------
+
+  function rowToObject(row) {
+    return {
+      employeeCode:
+        getColumn(
+          row,
+          [
+            'employeecode',
+            'employee code',
+            'employee',
+            'รหัสพนักงาน'
+          ]
+        ),
+
+      bn:
+        getColumn(
+          row,
+          [
+            'bn',
+            'receiptno',
+            'receipt no'
+          ]
+        ),
+
+      hn:
+        getColumn(
+          row,
+          [
+            'hn'
+          ]
+        ),
+
+      name:
+        getColumn(
+          row,
+          [
+            'name',
+            'patientname',
+            'patient name',
+            'ชื่อ'
+          ]
+        ),
+
+      date:
+        getColumn(
+          row,
+          [
+            'date',
+            'receiptdate',
+            'receipt date'
+          ]
+        ),
+
+      dateText:
+        getColumn(
+          row,
+          [
+            'date',
+            'receiptdate',
+            'receipt date'
+          ]
+        ),
+
+      paymentType:
+        getColumn(
+          row,
+          [
+            'paymenttype',
+            'payment type',
+            'payment'
+          ]
+        ),
+
+      total:
+        getColumn(
+          row,
+          [
+            'total'
+          ]
+        ),
+
+      doctorFee:
+        getColumn(
+          row,
+          [
+            'doctorfee',
+            'doctor fee'
+          ]
+        ),
+
+      hospitalNursing:
+        getColumn(
+          row,
+          [
+            'hospitalnursing',
+            'hospital nursing',
+            'hospital & nursing',
+            'hospital and nursing service'
+          ]
+        ),
+
+      other:
+        getColumn(
+          row,
+          [
+            'other'
+          ]
+        ),
+
+      month:
+        getColumn(
+          row,
+          [
+            'month'
+          ]
+        ),
+
+      year:
+        getColumn(
+          row,
+          [
+            'year'
+          ]
+        )
+    }
+  }
+
+  const data =
+    dataRows.map(
+      rowToObject
+    )
+
+  // --------------------------------------------------
+  // FILTER COMMON
+  // --------------------------------------------------
+
+  let filtered =
+    data.filter(item => {
+
+      if (
+        employeeCode &&
+        String(
+          item.employeeCode
+        ).trim()
+          .toUpperCase() !==
+          employeeCode.toUpperCase()
+      ) {
+        return false
+      }
+
+      if (
+        month &&
+        String(
+          item.month
+        ).trim() !== month
+      ) {
+        return false
+      }
+
+      if (
+        year &&
+        String(
+          item.year
+        ).trim() !== year
+      ) {
+        return false
+      }
+
+      return true
+    })
+
+  // --------------------------------------------------
+  // FIND BY BN
+  // --------------------------------------------------
+
+  if (
+    action === 'findByBN'
+  ) {
+    filtered =
+      filtered.filter(
+        item =>
+          String(
+            item.bn || ''
+          )
+            .trim()
+            .toLowerCase() ===
+          bn.toLowerCase()
+      )
+  }
+
+  // --------------------------------------------------
+  // FIND BY HN
+  // --------------------------------------------------
+
+  if (
+    action === 'findByHN'
+  ) {
+    filtered =
+      filtered.filter(
+        item =>
+          String(
+            item.hn || ''
+          )
+            .trim()
+            .toLowerCase() ===
+          hn.toLowerCase()
+      )
+  }
+
+  // --------------------------------------------------
+  // FIND BY NAME
+  // --------------------------------------------------
+
+  if (
+    action === 'findByName'
+  ) {
+    const searchName =
+      name.toLowerCase()
+
+    filtered =
+      filtered.filter(
+        item =>
+          String(
+            item.name || ''
+          )
+            .toLowerCase()
+            .includes(
+              searchName
+            )
+      )
+  }
+
+  // --------------------------------------------------
+  // FIND BY DATE
+  // --------------------------------------------------
+
+  if (
+    action === 'findByDate'
+  ) {
+    filtered =
+      filtered.filter(
+        item =>
+          String(
+            item.date || ''
+          ).trim() === date
+      )
+  }
+
+  console.log(
+    'GOOGLE SHEET RESULT:',
+    {
+      action,
+      count:
+        filtered.length
+    }
+  )
+
+  return {
+    found:
+      filtered.length > 0,
+
+    list:
+      filtered
   }
 }
 
@@ -261,7 +760,9 @@ async function querySheet(params = {}) {
 // ==================================================
 
 function isValidMonth(text) {
-  return /^(0[1-9]|1[0-2])$/.test(text)
+  return /^(0[1-9]|1[0-2])$/.test(
+    text
+  )
 }
 
 // ==================================================
@@ -269,13 +770,20 @@ function isValidMonth(text) {
 // ==================================================
 
 function isValidYear(text) {
-  if (!/^\d{4}$/.test(text)) {
+  if (
+    !/^\d{4}$/.test(text)
+  ) {
     return false
   }
 
-  const currentYear = new Date().getFullYear()
-  const minYear = currentYear - 5
-  const year = Number(text)
+  const currentYear =
+    new Date().getFullYear()
+
+  const minYear =
+    currentYear - 5
+
+  const year =
+    Number(text)
 
   return (
     year >= minYear &&
@@ -288,8 +796,11 @@ function isValidYear(text) {
 // ==================================================
 
 function getYearRangeText() {
-  const currentYear = new Date().getFullYear()
-  const minYear = currentYear - 5
+  const currentYear =
+    new Date().getFullYear()
+
+  const minYear =
+    currentYear - 5
 
   return `${minYear} - ${currentYear}`
 }
@@ -302,23 +813,35 @@ function isValidDate(text) {
   const dateRegex =
     /^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/
 
-  if (!dateRegex.test(text)) {
+  if (
+    !dateRegex.test(text)
+  ) {
     return false
   }
 
-  const [day, month, year] =
-    text.split('/').map(Number)
+  const [
+    day,
+    month,
+    year
+  ] =
+    text
+      .split('/')
+      .map(Number)
 
-  const date = new Date(
-    year,
-    month - 1,
-    day
-  )
+  const date =
+    new Date(
+      year,
+      month - 1,
+      day
+    )
 
   return (
-    date.getFullYear() === year &&
-    date.getMonth() === month - 1 &&
-    date.getDate() === day
+    date.getFullYear() ===
+      year &&
+    date.getMonth() ===
+      month - 1 &&
+    date.getDate() ===
+      day
   )
 }
 
@@ -326,124 +849,166 @@ function isValidDate(text) {
 // WEBHOOK
 // ==================================================
 
-app.post('/webhook', async (req, res) => {
-  const event = req.body.events?.[0]
+app.post(
+  '/webhook',
+  async (req, res) => {
 
-  if (!event) {
-    return res.sendStatus(200)
-  }
+    const event =
+      req.body.events?.[0]
 
-  const userId = event.source?.userId
+    if (!event) {
+      return res.sendStatus(
+        200
+      )
+    }
 
-  if (!userId) {
-    return res.sendStatus(200)
-  }
+    const userId =
+      event.source?.userId
 
-  let state = getState(userId)
+    if (!userId) {
+      return res.sendStatus(
+        200
+      )
+    }
 
-  try {
+    let state =
+      getState(userId)
 
-    // ==================================================
-    // TEXT
-    // ==================================================
-
-    if (event.message?.type === 'text') {
-
-      const text =
-        (event.message.text || '').trim()
+    try {
 
       // ==================================================
-      // UPLOAD TIMEOUT
+      // TEXT
       // ==================================================
 
       if (
-        state.mode === 'upload' &&
-        state.step === 'waitingImage'
+        event.message?.type ===
+        'text'
       ) {
+
+        const text =
+          (
+            event.message.text ||
+            ''
+          ).trim()
+
+        // ==================================================
+        // UPLOAD TIMEOUT
+        // ==================================================
 
         if (
-          isExpired(
-            state.waitingSince,
-            WAIT_IMAGE_MS
-          )
+          state.mode === 'upload' &&
+          state.step ===
+            'waitingImage'
         ) {
 
-          resetState(userId)
+          if (
+            isExpired(
+              state.waitingSince,
+              WAIT_IMAGE_MS
+            )
+          ) {
 
-          await reply(
-            event.replyToken,
-            '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
-          )
+            resetState(
+              userId
+            )
 
-          return res.sendStatus(200)
+            await reply(
+              event.replyToken,
+
+              '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
+            )
+
+            return res.sendStatus(
+              200
+            )
+          }
         }
-      }
 
-      // ==================================================
-      // SEARCH TIMEOUT
-      // ==================================================
-
-      if (
-        state.mode === 'search' &&
-        state.step !== 'idle'
-      ) {
+        // ==================================================
+        // SEARCH TIMEOUT
+        // ==================================================
 
         if (
-          isExpired(
-            state.searchWaitingSince,
-            WAIT_SEARCH_MS
-          )
+          state.mode ===
+            'search' &&
+          state.step !== 'idle'
         ) {
 
-          resetState(userId)
+          if (
+            isExpired(
+              state.searchWaitingSince,
+              WAIT_SEARCH_MS
+            )
+          ) {
+
+            resetState(
+              userId
+            )
+
+            await reply(
+              event.replyToken,
+
+              '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะค้นหาใหม่ พิมพ์ "ค้นหา"'
+            )
+
+            return res.sendStatus(
+              200
+            )
+          }
+        }
+
+        // ==================================================
+        // CANCEL
+        // ==================================================
+
+        if (
+          isCancelMessage(text)
+        ) {
+
+          if (
+            state.mode ===
+            'idle'
+          ) {
+
+            await reply(
+              event.replyToken,
+
+              'ตอนนี้ยังไม่ได้เริ่มอะไรครับ 🙂\nพิมพ์ "ส่งเอกสาร" หรือ "ค้นหา" ได้เลย'
+            )
+
+            return res.sendStatus(
+              200
+            )
+          }
+
+          resetState(
+            userId
+          )
 
           await reply(
             event.replyToken,
-            '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะค้นหาใหม่ พิมพ์ "ค้นหา"'
+
+            '❌ ยกเลิกเรียบร้อยครับ'
           )
 
-          return res.sendStatus(200)
+          return res.sendStatus(
+            200
+          )
         }
-      }
 
-      // ==================================================
-      // CANCEL
-      // ==================================================
+        // ==================================================
+        // HELP
+        // ==================================================
 
-      if (isCancelMessage(text)) {
-
-        if (state.mode === 'idle') {
+        if (
+          isHelpMessage(text) ||
+          text === 'วิธีใช้'
+        ) {
 
           await reply(
             event.replyToken,
-            'ตอนนี้ยังไม่ได้เริ่มอะไรครับ 🙂\nพิมพ์ "ส่งเอกสาร" หรือ "ค้นหา" ได้เลย'
-          )
 
-          return res.sendStatus(200)
-        }
-
-        resetState(userId)
-
-        await reply(
-          event.replyToken,
-          '❌ ยกเลิกเรียบร้อยครับ'
-        )
-
-        return res.sendStatus(200)
-      }
-
-      // ==================================================
-      // HELP
-      // ==================================================
-
-      if (
-        isHelpMessage(text) ||
-        text === 'วิธีใช้'
-      ) {
-
-        await reply(
-          event.replyToken,
-          `📌 วิธีใช้งาน
+            `📌 วิธีใช้งาน
 
 🟦 ส่งเอกสาร
 
@@ -480,143 +1045,212 @@ DATE ตัวอย่าง:
 11/02/2026
 
 พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน`
-        )
+          )
 
-        return res.sendStatus(200)
-      }
-
-      // ==================================================
-      // START UPLOAD
-      // ==================================================
-
-      if (text === 'ส่งเอกสาร') {
-
-        state = resetState(userId)
-
-        state.mode = 'upload'
-        state.step = 'waitingEmployeeCode'
-
-        await reply(
-          event.replyToken,
-          '🟦 ส่งเอกสาร\nกรุณาพิมพ์รหัสพนักงานครับ 👤'
-        )
-
-        return res.sendStatus(200)
-      }
-
-      // ==================================================
-      // START SEARCH
-      // ==================================================
-
-      if (text === 'ค้นหา') {
-
-        state = resetState(userId)
-
-        state.mode = 'search'
-        state.step = 'waitingEmployeeCodeForSearch'
-        state.searchWaitingSince = Date.now()
-
-        await reply(
-          event.replyToken,
-          '🔎 ค้นหา\nกรุณาพิมพ์รหัสพนักงานก่อนครับ 👤'
-        )
-
-        return res.sendStatus(200)
-      }
-
-      // ==================================================
-      // UPLOAD MODE
-      // ==================================================
-
-      if (state.mode === 'upload') {
+          return res.sendStatus(
+            200
+          )
+        }
 
         // ==================================================
-        // EMPLOYEE CODE
+        // START UPLOAD
         // ==================================================
 
         if (
-          state.step === 'waitingEmployeeCode'
+          text === 'ส่งเอกสาร'
         ) {
 
-          const code =
-            normalizeEmployeeCode(text)
-
-          if (!isValidEmployeeCode(code)) {
-
-            await reply(
-              event.replyToken,
-              '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
+          state =
+            resetState(
+              userId
             )
 
-            return res.sendStatus(200)
-          }
+          state.mode =
+            'upload'
 
-          state.employeeCode = code
-          state.step = 'waitingImage'
-          state.waitingSince = Date.now()
+          state.step =
+            'waitingEmployeeCode'
 
           await reply(
             event.replyToken,
-            `โอเคครับ 👤 ${code}
+
+            '🟦 ส่งเอกสาร\nกรุณาพิมพ์รหัสพนักงานครับ 👤'
+          )
+
+          return res.sendStatus(
+            200
+          )
+        }
+
+        // ==================================================
+        // START SEARCH
+        // ==================================================
+
+        if (
+          text === 'ค้นหา'
+        ) {
+
+          state =
+            resetState(
+              userId
+            )
+
+          state.mode =
+            'search'
+
+          state.step =
+            'waitingEmployeeCodeForSearch'
+
+          state.searchWaitingSince =
+            Date.now()
+
+          await reply(
+            event.replyToken,
+
+            '🔎 ค้นหา\nกรุณาพิมพ์รหัสพนักงานก่อนครับ 👤'
+          )
+
+          return res.sendStatus(
+            200
+          )
+        }
+
+        // ==================================================
+        // UPLOAD MODE
+        // ==================================================
+
+        if (
+          state.mode ===
+          'upload'
+        ) {
+
+          // ==================================================
+          // EMPLOYEE CODE
+          // ==================================================
+
+          if (
+            state.step ===
+            'waitingEmployeeCode'
+          ) {
+
+            const code =
+              normalizeEmployeeCode(
+                text
+              )
+
+            if (
+              !isValidEmployeeCode(
+                code
+              )
+            ) {
+
+              await reply(
+                event.replyToken,
+
+                '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
+              )
+
+              return res.sendStatus(
+                200
+              )
+            }
+
+            state.employeeCode =
+              code
+
+            state.step =
+              'waitingImage'
+
+            state.waitingSince =
+              Date.now()
+
+            await reply(
+              event.replyToken,
+
+              `โอเคครับ 👤 ${code}
 
 ส่งรูปใบเสร็จมาได้เลยครับ (ทีละ 1 รูป) 🧾`
-          )
+            )
 
-          return res.sendStatus(200)
-        }
+            return res.sendStatus(
+              200
+            )
+          }
 
-        // ==================================================
-        // WAITING IMAGE
-        // ==================================================
+          // ==================================================
+          // WAITING IMAGE
+          // ==================================================
 
-        if (
-          state.step === 'waitingImage'
-        ) {
-
-          await reply(
-            event.replyToken,
-            'ตอนนี้รอรูปใบเสร็จอยู่นะครับ 🧾\nส่งรูปมาได้เลย หรือพิมพ์ "ยกเลิก"'
-          )
-
-          return res.sendStatus(200)
-        }
-      }
-
-      // ==================================================
-      // SEARCH MODE
-      // ==================================================
-
-      if (state.mode === 'search') {
-
-        // ==================================================
-        // SEARCH EMPLOYEE CODE
-        // ==================================================
-
-        if (
-          state.step ===
-          'waitingEmployeeCodeForSearch'
-        ) {
-
-          const code =
-            normalizeEmployeeCode(text)
-
-          if (!isValidEmployeeCode(code)) {
+          if (
+            state.step ===
+            'waitingImage'
+          ) {
 
             await reply(
               event.replyToken,
-              '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
+
+              'ตอนนี้รอรูปใบเสร็จอยู่นะครับ 🧾\nส่งรูปมาได้เลย หรือพิมพ์ "ยกเลิก"'
             )
 
-            return res.sendStatus(200)
+            return res.sendStatus(
+              200
+            )
           }
+        }
 
-          state.employeeCode = code
-          state.step = 'waitingSearchMonth'
-          state.searchWaitingSince = Date.now()
+        // ==================================================
+        // SEARCH MODE
+        // ==================================================
 
-          await reply(
-            event.replyToken,
-            `โอเคครับ 👤 ${code}
+        if (
+          state.mode ===
+          'search'
+        ) {
+
+          // ==================================================
+          // SEARCH EMPLOYEE CODE
+          // ==================================================
+
+          if (
+            state.step ===
+            'waitingEmployeeCodeForSearch'
+          ) {
+
+            const code =
+              normalizeEmployeeCode(
+                text
+              )
+
+            if (
+              !isValidEmployeeCode(
+                code
+              )
+            ) {
+
+              await reply(
+                event.replyToken,
+
+                '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
+              )
+
+              return res.sendStatus(
+                200
+              )
+            }
+
+            state.employeeCode =
+              code
+
+            state.step =
+              'waitingSearchMonth'
+
+            state.searchWaitingSince =
+              Date.now()
+
+            await reply(
+              event.replyToken,
+
+              `โอเคครับ 👤 ${code}
 
 กรุณาเลือกเดือนที่ต้องการค้นหา
 
@@ -625,29 +1259,40 @@ DATE ตัวอย่าง:
 ตัวอย่าง:
 
 01 = มกราคม`
-          )
+            )
 
-          return res.sendStatus(200)
-        }
+            return res.sendStatus(
+              200
+            )
+          }
 
-        // ==================================================
-        // SEARCH MONTH
-        // ==================================================
+          // ==================================================
+          // SEARCH MONTH
+          // ==================================================
 
-        if (
-          state.step === 'waitingSearchMonth'
-        ) {
+          if (
+            state.step ===
+            'waitingSearchMonth'
+          ) {
 
-          const month = text.trim()
+            const month =
+              text.trim()
 
-          if (month === 'แก้เดือน') {
+            if (
+              month ===
+              'แก้เดือน'
+            ) {
 
-            state.step = 'waitingSearchMonth'
-            state.searchWaitingSince = Date.now()
+              state.step =
+                'waitingSearchMonth'
 
-            await reply(
-              event.replyToken,
-              `📅 แก้เดือน
+              state.searchWaitingSince =
+                Date.now()
+
+              await reply(
+                event.replyToken,
+
+                `📅 แก้เดือน
 
 กรุณาพิมพ์เดือน 01 - 12
 
@@ -656,28 +1301,43 @@ DATE ตัวอย่าง:
 01 = มกราคม
 
 หรือพิมพ์ "ยกเลิก"`
-            )
+              )
 
-            return res.sendStatus(200)
-          }
+              return res.sendStatus(
+                200
+              )
+            }
 
-          if (!isValidMonth(month)) {
+            if (
+              !isValidMonth(
+                month
+              )
+            ) {
+
+              await reply(
+                event.replyToken,
+
+                '❌ เดือนไม่ถูกต้องครับ\nต้องเป็น 01 ถึง 12 เท่านั้น\nหรือพิมพ์ "ยกเลิก"'
+              )
+
+              return res.sendStatus(
+                200
+              )
+            }
+
+            state.searchMonth =
+              month
+
+            state.step =
+              'waitingSearchYear'
+
+            state.searchWaitingSince =
+              Date.now()
 
             await reply(
               event.replyToken,
-              '❌ เดือนไม่ถูกต้องครับ\nต้องเป็น 01 ถึง 12 เท่านั้น\nหรือพิมพ์ "ยกเลิก"'
-            )
 
-            return res.sendStatus(200)
-          }
-
-          state.searchMonth = month
-          state.step = 'waitingSearchYear'
-          state.searchWaitingSince = Date.now()
-
-          await reply(
-            event.replyToken,
-            `📅 เดือน ${month}
+              `📅 เดือน ${month}
 
 กรุณาพิมพ์ปี ค.ศ. 4 หลัก
 
@@ -690,29 +1350,40 @@ ${getYearRangeText()}
 2026
 
 ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"`
-          )
+            )
 
-          return res.sendStatus(200)
-        }
+            return res.sendStatus(
+              200
+            )
+          }
 
-        // ==================================================
-        // SEARCH YEAR
-        // ==================================================
+          // ==================================================
+          // SEARCH YEAR
+          // ==================================================
 
-        if (
-          state.step === 'waitingSearchYear'
-        ) {
+          if (
+            state.step ===
+            'waitingSearchYear'
+          ) {
 
-          const year = text.trim()
+            const year =
+              text.trim()
 
-          if (year === 'แก้ปี') {
+            if (
+              year ===
+              'แก้ปี'
+            ) {
 
-            state.step = 'waitingSearchYear'
-            state.searchWaitingSince = Date.now()
+              state.step =
+                'waitingSearchYear'
 
-            await reply(
-              event.replyToken,
-              `📅 แก้ปี
+              state.searchWaitingSince =
+                Date.now()
+
+              await reply(
+                event.replyToken,
+
+                `📅 แก้ปี
 
 กรุณาพิมพ์ปี ค.ศ. 4 หลัก
 
@@ -725,22 +1396,29 @@ ${getYearRangeText()}
 2026
 
 หรือพิมพ์ "ยกเลิก"`
-            )
+              )
 
-            return res.sendStatus(200)
-          }
+              return res.sendStatus(
+                200
+              )
+            }
 
-          if (!isValidYear(year)) {
+            if (
+              !isValidYear(
+                year
+              )
+            ) {
 
-            const currentYear =
-              new Date().getFullYear()
+              const currentYear =
+                new Date().getFullYear()
 
-            const minYear =
-              currentYear - 5
+              const minYear =
+                currentYear - 5
 
-            await reply(
-              event.replyToken,
-              `❌ ปีไม่ถูกต้องครับ
+              await reply(
+                event.replyToken,
+
+                `❌ ปีไม่ถูกต้องครับ
 
 ปีต้องอยู่ระหว่าง ${minYear} - ${currentYear}
 
@@ -753,18 +1431,26 @@ ${getYearRangeText()}
 หรือพิมพ์ "แก้เดือน"
 
 หรือ "ยกเลิก"`
-            )
+              )
 
-            return res.sendStatus(200)
-          }
+              return res.sendStatus(
+                200
+              )
+            }
 
-          state.searchYear = year
-          state.step = 'chooseSearchType'
-          state.searchWaitingSince = Date.now()
+            state.searchYear =
+              year
 
-          await reply(
-            event.replyToken,
-            `📅 ช่วงค้นหา
+            state.step =
+              'chooseSearchType'
+
+            state.searchWaitingSince =
+              Date.now()
+
+            await reply(
+              event.replyToken,
+
+              `📅 ช่วงค้นหา
 
 เดือน: ${state.searchMonth}
 
@@ -783,67 +1469,92 @@ ${getYearRangeText()}
 ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"
 
 ถ้าต้องการแก้ปี พิมพ์ "แก้ปี"`
-          )
+            )
 
-          return res.sendStatus(200)
-        }
-
-        // ==================================================
-        // CHOOSE SEARCH TYPE
-        // ==================================================
-
-        if (
-          state.step === 'chooseSearchType'
-        ) {
-
-          const t = text.trim()
-
-          const map = {
-            '1': 'BN',
-            '2': 'HN',
-            '3': 'NAME',
-            '4': 'DATE'
+            return res.sendStatus(
+              200
+            )
           }
 
-          if (!map[t]) {
+          // ==================================================
+          // CHOOSE SEARCH TYPE
+          // ==================================================
+
+          if (
+            state.step ===
+            'chooseSearchType'
+          ) {
+
+            const t =
+              text.trim()
+
+            const map = {
+              '1': 'BN',
+              '2': 'HN',
+              '3': 'NAME',
+              '4': 'DATE'
+            }
+
+            if (!map[t]) {
+
+              await reply(
+                event.replyToken,
+
+                '❌ กรุณาพิมพ์แค่ 1 / 2 / 3 / 4\nหรือพิมพ์ "ยกเลิก"'
+              )
+
+              return res.sendStatus(
+                200
+              )
+            }
+
+            state.searchType =
+              map[t]
+
+            state.step =
+              'waitingSearchValue'
+
+            state.searchWaitingSince =
+              Date.now()
+
+            let hint = ''
+
+            if (
+              state.searchType ===
+              'BN'
+            ) {
+              hint =
+                'พิมพ์เลข BN เช่น L69-01-003-761'
+            }
+
+            if (
+              state.searchType ===
+              'HN'
+            ) {
+              hint =
+                'พิมพ์เลข HN เช่น 01-01-26-047'
+            }
+
+            if (
+              state.searchType ===
+              'NAME'
+            ) {
+              hint =
+                'พิมพ์ชื่อคนไข้'
+            }
+
+            if (
+              state.searchType ===
+              'DATE'
+            ) {
+              hint =
+                'พิมพ์วันที่รูปแบบ DD/MM/YYYY เช่น 11/02/2026'
+            }
 
             await reply(
               event.replyToken,
-              '❌ กรุณาพิมพ์แค่ 1 / 2 / 3 / 4\nหรือพิมพ์ "ยกเลิก"'
-            )
 
-            return res.sendStatus(200)
-          }
-
-          state.searchType = map[t]
-          state.step = 'waitingSearchValue'
-          state.searchWaitingSince = Date.now()
-
-          let hint = ''
-
-          if (state.searchType === 'BN') {
-            hint =
-              'พิมพ์เลข BN เช่น L69-01-003-761'
-          }
-
-          if (state.searchType === 'HN') {
-            hint =
-              'พิมพ์เลข HN เช่น 01-01-26-047'
-          }
-
-          if (state.searchType === 'NAME') {
-            hint =
-              'พิมพ์ชื่อคนไข้'
-          }
-
-          if (state.searchType === 'DATE') {
-            hint =
-              'พิมพ์วันที่รูปแบบ DD/MM/YYYY เช่น 11/02/2026'
-          }
-
-          await reply(
-            event.replyToken,
-            `🔎 ประเภท: ${state.searchType}
+              `🔎 ประเภท: ${state.searchType}
 
 เดือน: ${state.searchMonth}
 
@@ -852,72 +1563,91 @@ ${getYearRangeText()}
 ${hint}
 
 พิมพ์ค่าที่ต้องการค้นหาได้เลยครับ`
-          )
-
-          return res.sendStatus(200)
-        }
-
-        // ==================================================
-        // SEARCH VALUE
-        // ==================================================
-
-        if (
-          state.step === 'waitingSearchValue'
-        ) {
-
-          const value = text.trim()
-
-          const employeeCode =
-            state.employeeCode
-
-          const month =
-            state.searchMonth
-
-          const year =
-            state.searchYear
-
-          if (!value) {
-
-            await reply(
-              event.replyToken,
-              '❌ ค่าว่างครับ พิมพ์ใหม่อีกครั้ง หรือพิมพ์ "ยกเลิก"'
             )
 
-            return res.sendStatus(200)
+            return res.sendStatus(
+              200
+            )
           }
 
           // ==================================================
-          // DATE VALIDATION
+          // SEARCH VALUE
           // ==================================================
 
           if (
-            state.searchType === 'DATE'
+            state.step ===
+            'waitingSearchValue'
           ) {
 
-            if (!isValidDate(value)) {
+            const value =
+              text.trim()
+
+            const employeeCode =
+              state.employeeCode
+
+            const month =
+              state.searchMonth
+
+            const year =
+              state.searchYear
+
+            if (!value) {
 
               await reply(
                 event.replyToken,
-                '❌ รูปแบบวันที่ไม่ถูกต้องครับ\nต้องเป็น DD/MM/YYYY\nตัวอย่าง 11/02/2026'
+
+                '❌ ค่าว่างครับ พิมพ์ใหม่อีกครั้ง หรือพิมพ์ "ยกเลิก"'
               )
 
-              return res.sendStatus(200)
+              return res.sendStatus(
+                200
+              )
             }
 
-            const [
-              day,
-              dateMonth,
-              dateYear
-            ] = value.split('/')
+            // ==================================================
+            // DATE VALIDATION
+            // ==================================================
 
             if (
-              dateMonth !== month ||
-              dateYear !== year
+              state.searchType ===
+              'DATE'
             ) {
 
-              await reply(
-                event.replyToken,
-                `❌ วันที่ไม่ตรงกับช่วงที่เลือกครับ
+              if (
+                !isValidDate(
+                  value
+                )
+              ) {
+
+                await reply(
+                  event.replyToken,
+
+                  '❌ รูปแบบวันที่ไม่ถูกต้องครับ\nต้องเป็น DD/MM/YYYY\nตัวอย่าง 11/02/2026'
+                )
+
+                return res.sendStatus(
+                  200
+                )
+              }
+
+              const [
+                day,
+                dateMonth,
+                dateYear
+              ] =
+                value.split('/')
+
+              if (
+                dateMonth !==
+                  month ||
+                dateYear !==
+                  year
+              ) {
+
+                await reply(
+                  event.replyToken,
+
+                  `❌ วันที่ไม่ตรงกับช่วงที่เลือกครับ
 
 คุณเลือก:
 
@@ -930,72 +1660,78 @@ ${hint}
 ${value}
 
 กรุณาพิมพ์วันที่ที่อยู่ในเดือน ${month}/${year} ครับ`
-              )
+                )
 
-              return res.sendStatus(200)
-            }
-          }
-
-          // ==================================================
-          // COMMON SEARCH PARAMS
-          // ==================================================
-
-          const baseParams = {
-            employeeCode,
-            month,
-            year
-          }
-
-          // ==================================================
-          // BN
-          // ==================================================
-
-          if (
-            state.searchType === 'BN'
-          ) {
-
-            console.log(
-              'SEARCH BN:',
-              {
-                employeeCode,
-                month,
-                year,
-                value
+                return res.sendStatus(
+                  200
+                )
               }
-            )
+            }
 
-            const result =
-              await querySheet({
-                action: 'findByBN',
-                ...baseParams,
-                bn: value
-              })
+            // ==================================================
+            // COMMON SEARCH PARAMS
+            // ==================================================
 
-            console.log(
-              'BN RESULT:',
-              result
-            )
+            const baseParams = {
+              employeeCode,
+              month,
+              year
+            }
 
-            const list =
-              Array.isArray(result?.list)
-                ? result.list
-                : []
+            // ==================================================
+            // BN
+            // ==================================================
 
             if (
-              list.length === 0 &&
-              result?.found === true &&
-              result?.data
+              state.searchType ===
+              'BN'
             ) {
-              list.push(result.data)
-            }
 
-            resetState(userId)
+              console.log(
+                'SEARCH BN:',
+                {
+                  employeeCode,
+                  month,
+                  year,
+                  value
+                }
+              )
 
-            if (list.length === 0) {
+              const result =
+                await querySheet({
+                  action:
+                    'findByBN',
 
-              await reply(
-                event.replyToken,
-                `❌ ไม่พบข้อมูลครับ 😅
+                  ...baseParams,
+
+                  bn: value
+                })
+
+              console.log(
+                'BN RESULT:',
+                result
+              )
+
+              const list =
+                Array.isArray(
+                  result?.list
+                )
+                  ? result.list
+                  : []
+
+              resetState(
+                userId
+              )
+
+              if (
+                list.length ===
+                0
+              ) {
+
+                await reply(
+                  event.replyToken,
+
+                  `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
 
@@ -1006,23 +1742,30 @@ Year: ${year}
 BN: ${value}
 
 ลองตรวจสอบข้อมูลอีกครั้งครับ`
-              )
-
-              return res.sendStatus(200)
-            }
-
-            const messages =
-              list
-                .map((d, i) =>
-                  formatResultItem(d, i)
-                )
-                .join(
-                  '\n\n--------------------\n\n'
                 )
 
-            await reply(
-              event.replyToken,
-              `🔎 พบทั้งหมด ${list.length} รายการ
+                return res.sendStatus(
+                  200
+                )
+              }
+
+              const messages =
+                list
+                  .map(
+                    (d, i) =>
+                      formatResultItem(
+                        d,
+                        i
+                      )
+                  )
+                  .join(
+                    '\n\n--------------------\n\n'
+                  )
+
+              await reply(
+                event.replyToken,
+
+                `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
 
@@ -1035,53 +1778,67 @@ BN: ${value}
 ${messages}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
-            )
+              )
 
-            return res.sendStatus(200)
-          }
+              return res.sendStatus(
+                200
+              )
+            }
 
-          // ==================================================
-          // HN
-          // ==================================================
+            // ==================================================
+            // HN
+            // ==================================================
 
-          if (
-            state.searchType === 'HN'
-          ) {
+            if (
+              state.searchType ===
+              'HN'
+            ) {
 
-            console.log(
-              'SEARCH HN:',
-              {
-                employeeCode,
-                month,
-                year,
-                value
-              }
-            )
+              console.log(
+                'SEARCH HN:',
+                {
+                  employeeCode,
+                  month,
+                  year,
+                  value
+                }
+              )
 
-            const result =
-              await querySheet({
-                action: 'findByHN',
-                ...baseParams,
-                hn: value
-              })
+              const result =
+                await querySheet({
+                  action:
+                    'findByHN',
 
-            console.log(
-              'HN RESULT:',
-              result
-            )
+                  ...baseParams,
 
-            const list =
-              Array.isArray(result?.list)
-                ? result.list
-                : []
+                  hn: value
+                })
 
-            resetState(userId)
+              console.log(
+                'HN RESULT:',
+                result
+              )
 
-            if (list.length === 0) {
+              const list =
+                Array.isArray(
+                  result?.list
+                )
+                  ? result.list
+                  : []
 
-              await reply(
-                event.replyToken,
-                `❌ ไม่พบข้อมูลครับ 😅
+              resetState(
+                userId
+              )
+
+              if (
+                list.length ===
+                0
+              ) {
+
+                await reply(
+                  event.replyToken,
+
+                  `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
 
@@ -1094,29 +1851,36 @@ HN: ${value}
 ลองตรวจสอบข้อมูลอีกครั้งครับ
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
-              )
-
-              return res.sendStatus(200)
-            }
-
-            const preview =
-              list
-                .slice(0, 10)
-                .map((d, i) =>
-                  formatResultItem(d, i)
-                )
-                .join(
-                  '\n\n--------------------\n\n'
                 )
 
-            const moreText =
-              list.length > 10
-                ? `\n\nแสดง 10 จาก ${list.length} รายการ`
-                : ''
+                return res.sendStatus(
+                  200
+                )
+              }
 
-            await reply(
-              event.replyToken,
-              `🔎 พบทั้งหมด ${list.length} รายการ
+              const preview =
+                list
+                  .slice(0, 10)
+                  .map(
+                    (d, i) =>
+                      formatResultItem(
+                        d,
+                        i
+                      )
+                  )
+                  .join(
+                    '\n\n--------------------\n\n'
+                  )
+
+              const moreText =
+                list.length > 10
+                  ? `\n\nแสดง 10 จาก ${list.length} รายการ`
+                  : ''
+
+              await reply(
+                event.replyToken,
+
+                `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
 
@@ -1127,53 +1891,67 @@ Year: ${year}
 ${preview}${moreText}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
-            )
+              )
 
-            return res.sendStatus(200)
-          }
+              return res.sendStatus(
+                200
+              )
+            }
 
-          // ==================================================
-          // NAME
-          // ==================================================
+            // ==================================================
+            // NAME
+            // ==================================================
 
-          if (
-            state.searchType === 'NAME'
-          ) {
+            if (
+              state.searchType ===
+              'NAME'
+            ) {
 
-            console.log(
-              'SEARCH NAME:',
-              {
-                employeeCode,
-                month,
-                year,
-                value
-              }
-            )
+              console.log(
+                'SEARCH NAME:',
+                {
+                  employeeCode,
+                  month,
+                  year,
+                  value
+                }
+              )
 
-            const result =
-              await querySheet({
-                action: 'findByName',
-                ...baseParams,
-                name: value
-              })
+              const result =
+                await querySheet({
+                  action:
+                    'findByName',
 
-            console.log(
-              'NAME RESULT:',
-              result
-            )
+                  ...baseParams,
 
-            const list =
-              Array.isArray(result?.list)
-                ? result.list
-                : []
+                  name: value
+                })
 
-            resetState(userId)
+              console.log(
+                'NAME RESULT:',
+                result
+              )
 
-            if (list.length === 0) {
+              const list =
+                Array.isArray(
+                  result?.list
+                )
+                  ? result.list
+                  : []
 
-              await reply(
-                event.replyToken,
-                `❌ ไม่พบข้อมูลครับ 😅
+              resetState(
+                userId
+              )
+
+              if (
+                list.length ===
+                0
+              ) {
+
+                await reply(
+                  event.replyToken,
+
+                  `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
 
@@ -1184,29 +1962,36 @@ Year: ${year}
 NAME: ${value}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
-              )
-
-              return res.sendStatus(200)
-            }
-
-            const preview =
-              list
-                .slice(0, 10)
-                .map((r, i) =>
-                  formatResultItem(r, i)
-                )
-                .join(
-                  '\n\n--------------------\n\n'
                 )
 
-            const moreText =
-              list.length > 10
-                ? `\n\nแสดง 10 จาก ${list.length} รายการ`
-                : ''
+                return res.sendStatus(
+                  200
+                )
+              }
 
-            await reply(
-              event.replyToken,
-              `🔎 พบทั้งหมด ${list.length} รายการ
+              const preview =
+                list
+                  .slice(0, 10)
+                  .map(
+                    (r, i) =>
+                      formatResultItem(
+                        r,
+                        i
+                      )
+                  )
+                  .join(
+                    '\n\n--------------------\n\n'
+                  )
+
+              const moreText =
+                list.length > 10
+                  ? `\n\nแสดง 10 จาก ${list.length} รายการ`
+                  : ''
+
+              await reply(
+                event.replyToken,
+
+                `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
 
@@ -1219,53 +2004,67 @@ NAME: ${value}
 ${preview}${moreText}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
-            )
+              )
 
-            return res.sendStatus(200)
-          }
+              return res.sendStatus(
+                200
+              )
+            }
 
-          // ==================================================
-          // DATE
-          // ==================================================
+            // ==================================================
+            // DATE
+            // ==================================================
 
-          if (
-            state.searchType === 'DATE'
-          ) {
+            if (
+              state.searchType ===
+              'DATE'
+            ) {
 
-            console.log(
-              'SEARCH DATE:',
-              {
-                employeeCode,
-                month,
-                year,
-                value
-              }
-            )
+              console.log(
+                'SEARCH DATE:',
+                {
+                  employeeCode,
+                  month,
+                  year,
+                  value
+                }
+              )
 
-            const result =
-              await querySheet({
-                action: 'findByDate',
-                ...baseParams,
-                date: value
-              })
+              const result =
+                await querySheet({
+                  action:
+                    'findByDate',
 
-            console.log(
-              'DATE RESULT:',
-              result
-            )
+                  ...baseParams,
 
-            const list =
-              Array.isArray(result?.list)
-                ? result.list
-                : []
+                  date: value
+                })
 
-            resetState(userId)
+              console.log(
+                'DATE RESULT:',
+                result
+              )
 
-            if (list.length === 0) {
+              const list =
+                Array.isArray(
+                  result?.list
+                )
+                  ? result.list
+                  : []
 
-              await reply(
-                event.replyToken,
-                `❌ ไม่พบข้อมูลครับ 😅
+              resetState(
+                userId
+              )
+
+              if (
+                list.length ===
+                0
+              ) {
+
+                await reply(
+                  event.replyToken,
+
+                  `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
 
@@ -1276,23 +2075,30 @@ Year: ${year}
 DATE: ${value}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
-              )
-
-              return res.sendStatus(200)
-            }
-
-            const messages =
-              list
-                .map((d, i) =>
-                  formatResultItem(d, i)
-                )
-                .join(
-                  '\n\n--------------------\n\n'
                 )
 
-            await reply(
-              event.replyToken,
-              `🔎 พบทั้งหมด ${list.length} รายการ
+                return res.sendStatus(
+                  200
+                )
+              }
+
+              const messages =
+                list
+                  .map(
+                    (d, i) =>
+                      formatResultItem(
+                        d,
+                        i
+                      )
+                  )
+                  .join(
+                    '\n\n--------------------\n\n'
+                  )
+
+              await reply(
+                event.replyToken,
+
+                `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
 
@@ -1305,186 +2111,224 @@ DATE: ${value}
 ${messages}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
+              )
+
+              return res.sendStatus(
+                200
+              )
+            }
+          }
+        }
+
+        // ==================================================
+        // DEFAULT
+        // ==================================================
+
+        await reply(
+          event.replyToken,
+
+          'พิมพ์ "ส่งเอกสาร" เพื่อส่งใบเสร็จ\nหรือพิมพ์ "ค้นหา" เพื่อค้นหาข้อมูล\nหรือพิมพ์ "วิธีใช้"'
+        )
+
+        return res.sendStatus(
+          200
+        )
+      }
+
+      // ==================================================
+      // IMAGE
+      // ==================================================
+
+      if (
+        event.message?.type ===
+        'image'
+      ) {
+
+        if (
+          state.mode !==
+            'upload' ||
+          state.step !==
+            'waitingImage' ||
+          !state.employeeCode
+        ) {
+
+          await reply(
+            event.replyToken,
+
+            'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" แล้วใส่รหัสพนักงานก่อนครับ 🙂'
+          )
+
+          return res.sendStatus(
+            200
+          )
+        }
+
+        // ==================================================
+        // IMAGE TIMEOUT
+        // ==================================================
+
+        if (
+          isExpired(
+            state.waitingSince,
+            WAIT_IMAGE_MS
+          )
+        ) {
+
+          resetState(
+            userId
+          )
+
+          await reply(
+            event.replyToken,
+
+            '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
+          )
+
+          return res.sendStatus(
+            200
+          )
+        }
+
+        const messageId =
+          event.message.id
+
+        // ==================================================
+        // GET IMAGE FROM LINE
+        // ==================================================
+
+        const imageRes =
+          await axios.get(
+            `https://api-data.line.me/v2/bot/message/${messageId}/content`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${LINE_TOKEN}`
+              },
+
+              responseType:
+                'arraybuffer',
+
+              timeout: 20000
+            }
+          )
+
+        // ==================================================
+        // OCR
+        // ==================================================
+
+        const ocrText =
+          await ocrImage(
+            imageRes.data
+          )
+
+        console.log(
+          'OCR result:',
+          ocrText
+        )
+
+        if (!ocrText) {
+
+          await reply(
+            event.replyToken,
+
+            'อ่านตัวอักษรไม่ออกครับ 😅 กรุณาลองถ่ายใหม่ให้ชัดขึ้น'
+          )
+
+          return res.sendStatus(
+            200
+          )
+        }
+
+        // ==================================================
+        // CHECK RECEIPT
+        // ==================================================
+
+        const receiptText =
+          (ocrText || '')
+            .toLowerCase()
+            .replace(
+              /\s+/g,
+              ' '
             )
 
-            return res.sendStatus(200)
-          }
+        const isReceipt =
+          receiptText.includes(
+            'receipt'
+          ) &&
+          receiptText.includes(
+            'asoke skin hospital'
+          )
+
+        if (!isReceipt) {
+
+          await reply(
+            event.replyToken,
+
+            '❌ รูปนี้ไม่ใช่ใบเสร็จรูปแบบที่รองรับครับ\nกรุณาส่งใบเสร็จ Asoke Skin Hospital เท่านั้น 🧾'
+          )
+
+          return res.sendStatus(
+            200
+          )
         }
-      }
 
-      // ==================================================
-      // DEFAULT
-      // ==================================================
+        // ==================================================
+        // PARSE
+        // ==================================================
 
-      await reply(
-        event.replyToken,
-        'พิมพ์ "ส่งเอกสาร" เพื่อส่งใบเสร็จ\nหรือพิมพ์ "ค้นหา" เพื่อค้นหาข้อมูล\nหรือพิมพ์ "วิธีใช้"'
-      )
+        const parsed =
+          parseReceipt(
+            ocrText
+          )
 
-      return res.sendStatus(200)
-    }
+        parsed.employeeCode =
+          state.employeeCode
 
-    // ==================================================
-    // IMAGE
-    // ==================================================
+        parsed.doctorFee =
+          parsed.doctorFee ||
+          ''
 
-    if (
-      event.message?.type === 'image'
-    ) {
+        parsed.hospitalNursing =
+          parsed.hospitalNursing ||
+          ''
 
-      if (
-        state.mode !== 'upload' ||
-        state.step !== 'waitingImage' ||
-        !state.employeeCode
-      ) {
+        parsed.other =
+          parsed.other ||
+          ''
 
-        await reply(
-          event.replyToken,
-          'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" แล้วใส่รหัสพนักงานก่อนครับ 🙂'
-        )
-
-        return res.sendStatus(200)
-      }
-
-      // ==================================================
-      // IMAGE TIMEOUT
-      // ==================================================
-
-      if (
-        isExpired(
-          state.waitingSince,
-          WAIT_IMAGE_MS
-        )
-      ) {
-
-        resetState(userId)
-
-        await reply(
-          event.replyToken,
-          '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
-        )
-
-        return res.sendStatus(200)
-      }
-
-      const messageId =
-        event.message.id
-
-      // ==================================================
-      // GET IMAGE FROM LINE
-      // ==================================================
-
-      const imageRes =
-        await axios.get(
-          `https://api-data.line.me/v2/bot/message/${messageId}/content`,
+        console.log(
+          'Parsed expense:',
           {
-            headers: {
-              Authorization:
-                `Bearer ${LINE_TOKEN}`
-            },
+            doctorFee:
+              parsed.doctorFee,
 
-            responseType:
-              'arraybuffer',
+            hospitalNursing:
+              parsed.hospitalNursing,
 
-            timeout:
-              20000
+            other:
+              parsed.other
           }
         )
 
-      // ==================================================
-      // OCR
-      // ==================================================
+        // ==================================================
+        // SAVE
+        // ==================================================
 
-      const ocrText =
-        await ocrImage(imageRes.data)
+        await sendToSheet(
+          parsed
+        )
 
-      console.log(
-        'OCR result:',
-        ocrText
-      )
+        state.waitingSince =
+          Date.now()
 
-      if (!ocrText) {
+        // ==================================================
+        // REPLY
+        // ==================================================
 
         await reply(
           event.replyToken,
-          'อ่านตัวอักษรไม่ออกครับ 😅 กรุณาลองถ่ายใหม่ให้ชัดขึ้น'
-        )
 
-        return res.sendStatus(200)
-      }
-
-      // ==================================================
-      // CHECK RECEIPT
-      // ==================================================
-
-      const receiptText =
-        (ocrText || '')
-          .toLowerCase()
-          .replace(/\s+/g, ' ')
-
-      const isReceipt =
-        receiptText.includes('receipt') &&
-        receiptText.includes('asoke skin hospital')
-
-      if (!isReceipt) {
-
-        await reply(
-          event.replyToken,
-          '❌ รูปนี้ไม่ใช่ใบเสร็จรูปแบบที่รองรับครับ\nกรุณาส่งใบเสร็จ Asoke Skin Hospital เท่านั้น 🧾'
-        )
-
-        return res.sendStatus(200)
-      }
-
-      // ==================================================
-      // PARSE
-      // ==================================================
-
-      const parsed =
-        parseReceipt(ocrText)
-
-      parsed.employeeCode =
-        state.employeeCode
-
-      parsed.doctorFee =
-        parsed.doctorFee || ''
-
-      parsed.hospitalNursing =
-        parsed.hospitalNursing || ''
-
-      parsed.other =
-        parsed.other || ''
-
-      console.log(
-        'Parsed expense:',
-        {
-          doctorFee:
-            parsed.doctorFee,
-
-          hospitalNursing:
-            parsed.hospitalNursing,
-
-          other:
-            parsed.other
-        }
-      )
-
-      // ==================================================
-      // SAVE
-      // ==================================================
-
-      await sendToSheet(parsed)
-
-      state.waitingSince =
-        Date.now()
-
-      // ==================================================
-      // REPLY
-      // ==================================================
-
-      await reply(
-        event.replyToken,
-        `✅ บันทึกเรียบร้อยครับ
+          `✅ บันทึกเรียบร้อยครับ
 
 👤 รหัสพนักงาน: ${state.employeeCode}
 
@@ -1505,38 +2349,44 @@ Other: ${formatNumber(parsed.other)}
 ส่งรูปต่อไปได้เลย 🧾
 
 หรือพิมพ์ "ยกเลิก" เพื่อจบ`
-      )
+        )
 
-      return res.sendStatus(200)
-    }
+        return res.sendStatus(
+          200
+        )
+      }
 
-  } catch (err) {
-
-    console.error(
-      'WEBHOOK ERROR:',
-      err.response?.data ||
-      err.message
-    )
-
-    try {
-
-      await reply(
-        event.replyToken,
-        '⚠️ ระบบค้นหาหรือประมวลผลเกิดข้อผิดพลาดครับ\nกรุณาลองใหม่อีกครั้ง'
-      )
-
-    } catch (replyErr) {
+    } catch (err) {
 
       console.error(
-        'LINE REPLY ERROR:',
-        replyErr.response?.data ||
-        replyErr.message
+        'WEBHOOK ERROR:',
+        err.response?.data ||
+        err.message
       )
-    }
-  }
 
-  return res.sendStatus(200)
-})
+      try {
+
+        await reply(
+          event.replyToken,
+
+          '⚠️ ระบบค้นหาหรือประมวลผลเกิดข้อผิดพลาดครับ\nกรุณาลองใหม่อีกครั้ง'
+        )
+
+      } catch (replyErr) {
+
+        console.error(
+          'LINE REPLY ERROR:',
+          replyErr.response?.data ||
+          replyErr.message
+        )
+      }
+    }
+
+    return res.sendStatus(
+      200
+    )
+  }
+)
 
 // ==================================================
 // START
