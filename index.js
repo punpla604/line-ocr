@@ -2,7 +2,6 @@ require('dotenv').config()
 
 const express = require('express')
 const axios = require('axios')
-
 const sendToSheet = require('./send-to-sheet')
 
 const {
@@ -164,15 +163,23 @@ function formatResultItem(d, index) {
   return `🧾 รายการที่ ${index + 1}
 
 BN: ${d.bn || '-'}
+
 HN: ${d.hn || '-'}
+
 Name: ${d.name || '-'}
+
 Date: ${d.dateText || d.dateShort || '-'}
 
 Payment: ${d.paymentType || '-'}
 
 Total: ${formatNumber(d.total)}
+
 Doctor Fee: ${formatNumber(d.doctorFee)}
-Hospital & Nursing: ${formatNumber(d.hospitalNursing)}
+
+Hospital & Nursing: ${formatNumber(
+    d.hospitalNursing || d.hospitalNursingFee || d.hospital_nursing
+  )}
+
 Other: ${formatNumber(d.other)}`
 }
 
@@ -243,7 +250,6 @@ async function querySheet(params = {}) {
     return res.data
 
   } catch (err) {
-
     console.error('==============================')
     console.error('SHEET QUERY ERROR')
 
@@ -307,13 +313,15 @@ function isValidDate(text) {
     return false
   }
 
-  const [day, month, year] = text.split('/').map(Number)
+  const [day, month, year] =
+    text.split('/').map(Number)
 
-  const date = new Date(
-    year,
-    month - 1,
-    day
-  )
+  const date =
+    new Date(
+      year,
+      month - 1,
+      day
+    )
 
   return (
     date.getFullYear() === year &&
@@ -468,6 +476,7 @@ app.post('/webhook', async (req, res) => {
 4) DATE
 
 DATE ตัวอย่าง:
+
 11/02/2026
 
 พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน`
@@ -601,7 +610,6 @@ DATE ตัวอย่าง:
 
           state.employeeCode = code
 
-          // ขั้นต่อไป = เลือกเดือน
           state.step = 'waitingSearchMonth'
           state.searchWaitingSince = Date.now()
 
@@ -614,6 +622,7 @@ DATE ตัวอย่าง:
 พิมพ์เลขเดือน 01 - 12
 
 ตัวอย่าง:
+
 01 = มกราคม`
           )
 
@@ -643,12 +652,13 @@ DATE ตัวอย่าง:
               event.replyToken,
               `📅 แก้เดือน
 
-        กรุณาพิมพ์เดือน 01 - 12
+กรุณาพิมพ์เดือน 01 - 12
 
-        ตัวอย่าง:
-        01 = มกราคม
+ตัวอย่าง:
 
-        หรือพิมพ์ "ยกเลิก"`
+01 = มกราคม
+
+หรือพิมพ์ "ยกเลิก"`
             )
 
             return res.sendStatus(200)
@@ -670,7 +680,6 @@ DATE ตัวอย่าง:
 
           state.searchMonth = month
 
-          // ไปเลือกปี
           state.step = 'waitingSearchYear'
           state.searchWaitingSince = Date.now()
 
@@ -678,20 +687,21 @@ DATE ตัวอย่าง:
             event.replyToken,
             `📅 เดือน ${month}
 
-            กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+กรุณาพิมพ์ปี ค.ศ. 4 หลัก
 
-            ปีที่สามารถค้นหาได้:
-            ${getYearRangeText()}
+ปีที่สามารถค้นหาได้:
 
-            ตัวอย่าง:
-            2026
+${getYearRangeText()}
 
-            ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"`
+ตัวอย่าง:
+
+2026
+
+ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"`
           )
 
           return res.sendStatus(200)
         }
-
 
         // ==================================================
         // SEARCH YEAR
@@ -716,15 +726,17 @@ DATE ตัวอย่าง:
               event.replyToken,
               `📅 แก้ปี
 
-              กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+กรุณาพิมพ์ปี ค.ศ. 4 หลัก
 
-              ปีที่สามารถค้นหาได้:
-              ${getYearRangeText()}
+ปีที่สามารถค้นหาได้:
 
-              ตัวอย่าง:
-              2026
+${getYearRangeText()}
 
-              หรือพิมพ์ "ยกเลิก"`
+ตัวอย่าง:
+
+2026
+
+หรือพิมพ์ "ยกเลิก"`
             )
 
             return res.sendStatus(200)
@@ -736,21 +748,27 @@ DATE ตัวอย่าง:
 
           if (!isValidYear(year)) {
 
-            const currentYear = new Date().getFullYear()
-            const minYear = currentYear - 5
+            const currentYear =
+              new Date().getFullYear()
+
+            const minYear =
+              currentYear - 5
 
             await reply(
-            event.replyToken,
-            `❌ ปีไม่ถูกต้องครับ
+              event.replyToken,
+              `❌ ปีไม่ถูกต้องครับ
 
-            ปีต้องอยู่ระหว่าง ${minYear} - ${currentYear}
+ปีต้องอยู่ระหว่าง ${minYear} - ${currentYear}
 
-            ไม่สามารถเลือกปีอนาคตได้
-            และย้อนหลังเกิน 5 ปีไม่ได้
+ไม่สามารถเลือกปีอนาคตได้
 
-            กรุณาพิมพ์ปีใหม่อีกครั้ง
-            หรือพิมพ์ "แก้เดือน"
-            หรือ "ยกเลิก"`
+และย้อนหลังเกิน 5 ปีไม่ได้
+
+กรุณาพิมพ์ปีใหม่อีกครั้ง
+
+หรือพิมพ์ "แก้เดือน"
+
+หรือ "ยกเลิก"`
             )
 
             return res.sendStatus(200)
@@ -758,26 +776,30 @@ DATE ตัวอย่าง:
 
           state.searchYear = year
 
-          // ไปเลือกประเภท
           state.step = 'chooseSearchType'
           state.searchWaitingSince = Date.now()
 
           await reply(
-          event.replyToken,
-          `📅 ช่วงค้นหา
+            event.replyToken,
+            `📅 ช่วงค้นหา
 
-          เดือน: ${state.searchMonth}
-          ปี: ${state.searchYear}
+เดือน: ${state.searchMonth}
 
-          เลือกประเภทค้นหา (พิมพ์เลข):
+ปี: ${state.searchYear}
 
-          1) BN
-          2) HN
-          3) NAME
-          4) DATE
+เลือกประเภทค้นหา (พิมพ์เลข):
 
-          ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"
-          ถ้าต้องการแก้ปี พิมพ์ "แก้ปี"`
+1) BN
+
+2) HN
+
+3) NAME
+
+4) DATE
+
+ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"
+
+ถ้าต้องการแก้ปี พิมพ์ "แก้ปี"`
           )
 
           return res.sendStatus(200)
@@ -811,7 +833,6 @@ DATE ตัวอย่าง:
           }
 
           state.searchType = map[t]
-
           state.step = 'waitingSearchValue'
           state.searchWaitingSince = Date.now()
 
@@ -842,6 +863,7 @@ DATE ตัวอย่าง:
             `🔎 ประเภท: ${state.searchType}
 
 เดือน: ${state.searchMonth}
+
 ปี: ${state.searchYear}
 
 ${hint}
@@ -899,7 +921,6 @@ ${hint}
               return res.sendStatus(200)
             }
 
-            // ตรวจสอบว่า DATE อยู่ในเดือน/ปีที่เลือกหรือไม่
             const [
               day,
               dateMonth,
@@ -916,10 +937,13 @@ ${hint}
                 `❌ วันที่ไม่ตรงกับช่วงที่เลือกครับ
 
 คุณเลือก:
+
 เดือน ${month}
+
 ปี ${year}
 
 แต่วันที่ที่พิมพ์คือ:
+
 ${value}
 
 กรุณาพิมพ์วันที่ที่อยู่ในเดือน ${month}/${year} ครับ`
@@ -992,8 +1016,11 @@ ${value}
                 `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
+
 Month: ${month}
+
 Year: ${year}
+
 BN: ${value}
 
 ลองตรวจสอบข้อมูลอีกครั้งครับ`
@@ -1002,7 +1029,6 @@ BN: ${value}
               return res.sendStatus(200)
             }
 
-            // BN แสดงทุกผลที่พบ
             const messages =
               list
                 .map((d, i) =>
@@ -1017,8 +1043,11 @@ BN: ${value}
               `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
+
 Month: ${month}
+
 Year: ${year}
+
 BN: ${value}
 
 ${messages}
@@ -1033,7 +1062,9 @@ ${messages}
           // HN
           // ==================================================
 
-          if (state.searchType === 'HN') {
+          if (
+            state.searchType === 'HN'
+          ) {
 
             console.log(
               'SEARCH HN:',
@@ -1070,23 +1101,22 @@ ${messages}
                 event.replyToken,
                 `❌ ไม่พบข้อมูลครับ 😅
 
-          Employee: ${employeeCode}
+Employee: ${employeeCode}
 
-          Month: ${month}
+Month: ${month}
 
-          Year: ${year}
+Year: ${year}
 
-          HN: ${value}
+HN: ${value}
 
-          ลองตรวจสอบข้อมูลอีกครั้งครับ
+ลองตรวจสอบข้อมูลอีกครั้งครับ
 
-          พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
+พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
               )
 
               return res.sendStatus(200)
             }
 
-            // HN แสดงผลเหมือน BN / NAME
             const preview =
               list
                 .slice(0, 10)
@@ -1106,17 +1136,15 @@ ${messages}
               event.replyToken,
               `🔎 พบทั้งหมด ${list.length} รายการ
 
-          Employee: ${employeeCode}
+Employee: ${employeeCode}
 
-          Month: ${month}
+Month: ${month}
 
-          Year: ${year}
+Year: ${year}
 
-          HN: ${value}
+${preview}${moreText}
 
-          ${preview}${moreText}
-
-          พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
+พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
             )
 
             return res.sendStatus(200)
@@ -1166,15 +1194,17 @@ ${messages}
                 `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
+
 Month: ${month}
+
 Year: ${year}
+
 NAME: ${value}`
               )
 
               return res.sendStatus(200)
             }
 
-            // NAME แสดงสูงสุด 10
             const preview =
               list
                 .slice(0, 10)
@@ -1195,8 +1225,11 @@ NAME: ${value}`
               `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
+
 Month: ${month}
+
 Year: ${year}
+
 NAME: ${value}
 
 ${preview}${moreText}
@@ -1251,15 +1284,17 @@ ${preview}${moreText}
                 `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
+
 Month: ${month}
+
 Year: ${year}
+
 DATE: ${value}`
               )
 
               return res.sendStatus(200)
             }
 
-            // DATE แสดงทุกผลที่พบ
             const messages =
               list
                 .map((d, i) =>
@@ -1274,8 +1309,11 @@ DATE: ${value}`
               `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
+
 Month: ${month}
+
 Year: ${year}
+
 DATE: ${value}
 
 ${messages}
@@ -1463,12 +1501,17 @@ ${messages}
 👤 รหัสพนักงาน: ${state.employeeCode}
 
 BN: ${parsed.bn || '-'}
+
 Date: ${parsed.receiptDateRaw || '-'}
+
 HN: ${parsed.hn || '-'}
+
 Total: ${formatNumber(parsed.total)}
 
 Doctor Fee: ${formatNumber(parsed.doctorFee)}
+
 Hospital & Nursing: ${formatNumber(parsed.hospitalNursing)}
+
 Other: ${formatNumber(parsed.other)}
 
 ส่งรูปต่อไปได้เลย 🧾
@@ -1530,4 +1573,3 @@ app.listen(
     )
   }
 )
-
