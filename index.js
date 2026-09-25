@@ -15,7 +15,7 @@ const app = express()
 app.use(express.json())
 
 const LINE_TOKEN = process.env.LINE_TOKEN
-const SHEET_URL = process.env.SHEET_URL
+const SHEET_ID = process.env.SHEET_ID
 const SHEET_SECRET = process.env.SHEET_SECRET
 
 // ==================================================
@@ -51,9 +51,7 @@ function getState(userId) {
 
 function resetState(userId) {
   const state = defaultState()
-
   userState.set(userId, state)
-
   return state
 }
 
@@ -219,8 +217,8 @@ async function reply(replyToken, text) {
 // ==================================================
 
 async function querySheet(params = {}) {
-  if (!SHEET_URL) {
-    throw new Error('Missing env: SHEET_URL')
+  if (!SHEET_ID) {
+    throw new Error('Missing env: SHEET_ID')
   }
 
   if (!SHEET_SECRET) {
@@ -229,6 +227,7 @@ async function querySheet(params = {}) {
 
   const queryParams = {
     ...params,
+    sheetId: SHEET_ID,
     secret: SHEET_SECRET
   }
 
@@ -236,7 +235,7 @@ async function querySheet(params = {}) {
 
   try {
     const res = await axios.get(
-      SHEET_URL,
+      process.env.SHEET_URL || '',
       {
         params: queryParams,
         timeout: 60000
