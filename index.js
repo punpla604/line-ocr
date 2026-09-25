@@ -359,55 +359,44 @@ async function getSheetValues(
 // FIND SHEET DATA
 // ==================================================
 
-async function querySheet(
-  params = {}
-) {
+async function querySheet(params = {}) {
   if (!SHEET_ID) {
-    throw new Error(
-      'Missing env: SHEET_ID'
-    )
+    throw new Error('Missing env: SHEET_ID')
   }
 
-  const sheets =
-    getSheetsClient()
+  const sheets = getSheetsClient()
 
-  const action =
+  const action = String(
     params.action || ''
+  ).trim()
 
-  const employeeCode =
-    String(
-      params.employeeCode || ''
-    ).trim()
+  const employeeCode = String(
+    params.employeeCode || ''
+  ).trim()
 
-  const month =
-    String(
-      params.month || ''
-    ).trim()
+  const month = String(
+    params.month || ''
+  ).trim()
 
-  const year =
-    String(
-      params.year || ''
-    ).trim()
+  const year = String(
+    params.year || ''
+  ).trim()
 
-  const bn =
-    String(
-      params.bn || ''
-    ).trim()
+  const bn = String(
+    params.bn || ''
+  ).trim()
 
-  const hn =
-    String(
-      params.hn || ''
-    ).trim()
+  const hn = String(
+    params.hn || ''
+  ).trim()
 
-  const name =
-    String(
-      params.name || ''
-    ).trim()
+  const name = String(
+    params.name || ''
+  ).trim()
 
-  const date =
-    String(
-      params.date || ''
-    ).trim()
+  const date = String(
+    params.date || ''
+  ).trim()
 
   console.log(
     'GOOGLE SHEET QUERY:',
@@ -423,25 +412,26 @@ async function querySheet(
     }
   )
 
-  // --------------------------------------------------
-  // อ่านข้อมูลจาก Sheet
-  // --------------------------------------------------
+  // ==================================================
+  // READ GOOGLE SHEET
+  // ==================================================
 
   const response =
     await sheets.spreadsheets.values.get({
-      spreadsheetId:
-        SHEET_ID,
-
+      spreadsheetId: SHEET_ID,
       range:
         process.env.SHEET_RANGE ||
         'Sheet1!A:Z',
-
-      majorDimension:
-        'ROWS'
+      majorDimension: 'ROWS'
     })
 
   const rows =
     response.data.values || []
+
+  console.log(
+    'GOOGLE SHEET RAW ROW COUNT:',
+    rows.length
+  )
 
   if (rows.length === 0) {
     return {
@@ -450,9 +440,9 @@ async function querySheet(
     }
   }
 
-  // --------------------------------------------------
+  // ==================================================
   // HEADER
-  // --------------------------------------------------
+  // ==================================================
 
   const headers =
     rows[0].map(header =>
@@ -461,467 +451,487 @@ async function querySheet(
         .toLowerCase()
     )
 
+  console.log(
+    'GOOGLE SHEET HEADERS:',
+    headers
+  )
+
   const dataRows =
     rows.slice(1)
 
-  function getColumn(
-    row,
-    possibleNames
-  ) {
+  // ==================================================
+  // GET COLUMN
+  // ==================================================
+
+  function getColumn(row, possibleNames) {
     for (
-      const possibleName
-      of possibleNames
+      const possibleName of possibleNames
     ) {
       const index =
         headers.indexOf(
-          possibleName.toLowerCase()
+          String(possibleName)
+            .trim()
+            .toLowerCase()
         )
 
-      if (
-        index !== -1
-      ) {
-        return row[index] || ''
+      if (index !== -1) {
+        return String(
+          row[index] || ''
+        ).trim()
       }
     }
 
     return ''
   }
 
-  // --------------------------------------------------
-  // CONVERT ROW
-  // --------------------------------------------------
+  // ==================================================
+  // ROW -> OBJECT
+  // ==================================================
 
   function rowToObject(row) {
-
     return {
-
       employeeCode:
-        getColumn(
-          row,
-          [
-            'employeecode',
-            'employee code',
-            'employee',
-            'รหัสพนักงาน'
-          ]
-        ),
+        getColumn(row, [
+          'employeecode',
+          'employee code',
+          'employee',
+          'รหัสพนักงาน'
+        ]),
 
       bn:
-        getColumn(
-          row,
-          [
-            'bn',
-            'receiptno',
-            'receipt no'
-          ]
-        ),
-
-      hn:
-        getColumn(
-          row,
-          [
-            'hn'
-          ]
-        ),
-
-      name:
-        getColumn(
-          row,
-          [
-            'name',
-            'patientname',
-            'patient name',
-            'ชื่อ'
-          ]
-        ),
-
-      // สำคัญ:
-      // Google Sheet ใช้ dateText
-      date:
-        getColumn(
-          row,
-          [
-            'datetext',
-            'date text',
-            'date',
-            'receiptdate',
-            'receipt date'
-          ]
-        ),
+        getColumn(row, [
+          'bn',
+          'receiptno',
+          'receipt no'
+        ]),
 
       dateText:
-        getColumn(
-          row,
-          [
-            'datetext',
-            'date text',
-            'date',
-            'receiptdate',
-            'receipt date'
-          ]
-        ),
+        getColumn(row, [
+          'datetext',
+          'date text',
+          'date',
+          'receiptdate',
+          'receipt date'
+        ]),
+
+      date:
+        getColumn(row, [
+          'datetext',
+          'date text',
+          'date',
+          'receiptdate',
+          'receipt date'
+        ]),
 
       time:
-        getColumn(
-          row,
-          [
-            'timetext',
-            'time text',
-            'time'
-          ]
-        ),
+        getColumn(row, [
+          'timetext',
+          'time text',
+          'time'
+        ]),
+
+      hn:
+        getColumn(row, [
+          'hn'
+        ]),
+
+      name:
+        getColumn(row, [
+          'name',
+          'patientname',
+          'patient name',
+          'ชื่อ'
+        ]),
 
       paymentType:
-        getColumn(
-          row,
-          [
-            'paymenttype',
-            'payment type',
-            'payment'
-          ]
-        ),
+        getColumn(row, [
+          'paymenttype',
+          'payment type',
+          'payment'
+        ]),
 
       vat:
-        getColumn(
-          row,
-          [
-            'vat'
-          ]
-        ),
+        getColumn(row, [
+          'vat'
+        ]),
 
       total:
-        getColumn(
-          row,
-          [
-            'total'
-          ]
-        ),
+        getColumn(row, [
+          'total'
+        ]),
 
       doctorFee:
-        getColumn(
-          row,
-          [
-            'doctorfee',
-            'doctor fee'
-          ]
-        ),
+        getColumn(row, [
+          'doctorfee',
+          'doctor fee'
+        ]),
 
       hospitalNursing:
-        getColumn(
-          row,
-          [
-            'hospital&nursing',
-            'hospital & nursing',
-            'hospitalnursing',
-            'hospital nursing',
-            'hospital and nursing service'
-          ]
-        ),
+        getColumn(row, [
+          'hospital&nursing',
+          'hospital & nursing',
+          'hospitalnursing',
+          'hospital nursing',
+          'hospital and nursing service'
+        ]),
 
       other:
-        getColumn(
-          row,
-          [
-            'other'
-          ]
-        ),
+        getColumn(row, [
+          'other'
+        ]),
 
       itemJson:
-        getColumn(
-          row,
-          [
-            'itemjson',
-            'item json'
-          ]
-        ),
+        getColumn(row, [
+          'itemjson',
+          'item json'
+        ]),
 
       raw:
-        getColumn(
-          row,
-          [
-            'raw'
-          ]
-        ),
+        getColumn(row, [
+          'raw'
+        ]),
 
       month: '',
       year: ''
     }
   }
-  
-  // --------------------------------------------------
-  // FILTER COMMON
-  // --------------------------------------------------
+
+  // ==================================================
+  // IMPORTANT
+  // แปลง Google Sheet rows -> objects
+  // ==================================================
+
+  const data =
+    dataRows.map(row =>
+      rowToObject(row)
+    )
+
+  console.log(
+    'GOOGLE SHEET DATA COUNT:',
+    data.length
+  )
+
+  // ==================================================
+  // NORMALIZE
+  // ==================================================
 
   function normalizeText(value) {
-
     return String(value || '')
       .trim()
       .toLowerCase()
   }
 
-  let filtered = data.filter(item => {
+  // ==================================================
+  // GET MONTH / YEAR FROM DATE
+  // ==================================================
 
-    // -----------------------------------------------
-    // EMPLOYEE
-    // -----------------------------------------------
-
-    if (
-      employeeCode &&
-      normalizeText(item.employeeCode) !==
-        normalizeText(employeeCode)
-    ) {
-      return false
-    }
-
-    // -----------------------------------------------
-    // MONTH / YEAR
-    // -----------------------------------------------
-
-    if (month || year) {
-
-      const rowDate =
-        getRowMonthYear(item)
-
-      if (
-        month &&
-        rowDate.month !==
-          String(month).padStart(2, '0')
-      ) {
-        return false
-      }
-
-      if (
-        year &&
-        rowDate.year !==
-          String(year)
-      ) {
-        return false
-      }
-    }
-
-    return true
-  })
-
-    // --------------------------------------------------
-    // GET MONTH / YEAR FROM DATE
-    // --------------------------------------------------
-
-    function getRowMonthYear(item) {
-
-      const rawDate = String(
+  function getRowMonthYear(item) {
+    const rawDate =
+      String(
         item.dateText ||
         item.date ||
         ''
       ).trim()
 
-      console.log(
-        'CHECK ROW DATE:',
-        {
-          rawDate,
-          itemMonth: item.month,
-          itemYear: item.year
-        }
-      )
+    console.log(
+      'CHECK ROW DATE:',
+      {
+        rawDate,
+        itemMonth: item.month,
+        itemYear: item.year
+      }
+    )
 
-      // -----------------------------------------------
-      // YYYY-MM-DD
-      // -----------------------------------------------
+    // -----------------------------------------------
+    // YYYY-MM-DD
+    // -----------------------------------------------
 
-      let match = rawDate.match(
+    let match =
+      rawDate.match(
         /^(\d{4})-(\d{1,2})-(\d{1,2})$/
       )
 
-      if (match) {
-
-        return {
-          year: match[1],
-          month: String(
-            match[2]
-          ).padStart(2, '0')
-        }
+    if (match) {
+      return {
+        year: match[1],
+        month:
+          String(match[2])
+            .padStart(2, '0')
       }
+    }
 
-      // -----------------------------------------------
-      // DD/MM/YYYY
-      // -----------------------------------------------
+    // -----------------------------------------------
+    // DD/MM/YYYY
+    // -----------------------------------------------
 
-      match = rawDate.match(
+    match =
+      rawDate.match(
         /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
       )
 
-      if (match) {
-
-        return {
-          year: match[3],
-          month: String(
-            match[2]
-          ).padStart(2, '0')
-        }
+    if (match) {
+      return {
+        year: match[3],
+        month:
+          String(match[2])
+            .padStart(2, '0')
       }
+    }
 
-      // -----------------------------------------------
-      // DD Month YYYY
-      // เช่น
-      // 31 January 2026
-      // -----------------------------------------------
+    // -----------------------------------------------
+    // DD Month YYYY
+    // เช่น 31 January 2026
+    // -----------------------------------------------
 
-      const parsedDate =
-        new Date(rawDate)
+    const parsedDate =
+      new Date(rawDate)
 
-      if (
-        !Number.isNaN(
-          parsedDate.getTime()
-        )
-      ) {
-
-        return {
-          year: String(
+    if (
+      !Number.isNaN(
+        parsedDate.getTime()
+      )
+    ) {
+      return {
+        year:
+          String(
             parsedDate.getFullYear()
           ),
 
-          month: String(
+        month:
+          String(
             parsedDate.getMonth() + 1
           ).padStart(2, '0')
-        }
       }
+    }
 
-      // -----------------------------------------------
-      // fallback
-      // -----------------------------------------------
+    // -----------------------------------------------
+    // fallback
+    // -----------------------------------------------
 
-      return {
-        year: String(
+    return {
+      year:
+        String(
           item.year || ''
         ).trim(),
 
-        month: String(
+      month:
+        String(
           item.month || ''
         )
           .trim()
           .padStart(2, '0')
-      }
     }
+  }
 
-  // --------------------------------------------------
-  // DEBUG
-  // --------------------------------------------------
+  // ==================================================
+  // COMMON FILTER
+  // ==================================================
+
+  let filtered =
+    data.filter(item => {
+
+      // -----------------------------------------------
+      // EMPLOYEE
+      // -----------------------------------------------
+
+      if (
+        employeeCode &&
+        normalizeText(
+          item.employeeCode
+        ) !==
+          normalizeText(
+            employeeCode
+          )
+      ) {
+        return false
+      }
+
+      // -----------------------------------------------
+      // MONTH / YEAR
+      // -----------------------------------------------
+
+      if (month || year) {
+        const rowDate =
+          getRowMonthYear(item)
+
+        if (
+          month &&
+          rowDate.month !==
+            String(month)
+              .padStart(2, '0')
+        ) {
+          return false
+        }
+
+        if (
+          year &&
+          rowDate.year !==
+            String(year)
+        ) {
+          return false
+        }
+      }
+
+      return true
+    })
+
+  // ==================================================
+  // DEBUG BEFORE SEARCH TYPE
+  // ==================================================
 
   console.log(
-    'FILTERED DATA COUNT:',
+    'FILTERED COMMON COUNT:',
     filtered.length
   )
 
   console.log(
-    'FILTERED DATA:',
-    filtered.slice(0, 20).map(item => ({
-      employeeCode:
-        item.employeeCode,
-
-      bn:
-        item.bn,
-
-      hn:
-        item.hn,
-
-      name:
-        item.name,
-
-      date:
-        item.date,
-
-      month:
-        item.month,
-
-      year:
-        item.year
-    }))
+    'FILTERED COMMON:',
+    filtered
+      .slice(0, 20)
+      .map(item => ({
+        employeeCode:
+          item.employeeCode,
+        bn:
+          item.bn,
+        hn:
+          item.hn,
+        name:
+          item.name,
+        dateText:
+          item.dateText,
+        month:
+          getRowMonthYear(item).month,
+        year:
+          getRowMonthYear(item).year
+      }))
   )
 
-  // --------------------------------------------------
-  // DEBUG FIRST ROW
-  // --------------------------------------------------
-
-  console.log(
-    'FIRST ROW OBJECT:',
-    data[0]
-  )
-
-  // --------------------------------------------------
+  // ==================================================
   // FIND BY BN
-  // --------------------------------------------------
+  // ==================================================
 
   if (
     action === 'findByBN'
   ) {
+    const searchBN =
+      normalizeText(bn)
+
     filtered =
-      filtered.filter(
-        item =>
-          String(
-            item.bn || ''
-          )
-            .trim()
-            .toLowerCase() ===
-          bn.toLowerCase()
+      filtered.filter(item =>
+        normalizeText(
+          item.bn
+        ) === searchBN
       )
   }
 
-  // --------------------------------------------------
+  // ==================================================
   // FIND BY HN
-  // --------------------------------------------------
+  // ==================================================
 
   if (
     action === 'findByHN'
   ) {
+    const searchHN =
+      normalizeText(hn)
+
     filtered =
-      filtered.filter(
-        item =>
-          String(
-            item.hn || ''
-          )
-            .trim()
-            .toLowerCase() ===
-          hn.toLowerCase()
+      filtered.filter(item =>
+        normalizeText(
+          item.hn
+        ) === searchHN
       )
   }
 
-  // --------------------------------------------------
+  // ==================================================
   // FIND BY NAME
-  // --------------------------------------------------
+  // ==================================================
 
   if (
     action === 'findByName'
   ) {
     const searchName =
-      name.toLowerCase()
+      normalizeText(name)
 
     filtered =
-      filtered.filter(
-        item =>
-          String(
-            item.name || ''
-          )
-            .toLowerCase()
-            .includes(
-              searchName
-            )
+      filtered.filter(item =>
+        normalizeText(
+          item.name
+        ).includes(searchName)
       )
   }
 
-  // --------------------------------------------------
+  // ==================================================
   // FIND BY DATE
-  // --------------------------------------------------
+  // ==================================================
 
   if (
     action === 'findByDate'
   ) {
+    const searchDate =
+      normalizeText(date)
+
     filtered =
-      filtered.filter(
-        item =>
+      filtered.filter(item => {
+
+        const sheetDate =
+          normalizeText(
+            item.dateText ||
+            item.date
+          )
+
+        // ตรงแบบ DD/MM/YYYY
+        if (
+          sheetDate ===
+          searchDate
+        ) {
+          return true
+        }
+
+        // แปลงวันที่ Sheet
+        // เช่น 31 January 2026
+        // ให้เทียบกับ DD/MM/YYYY
+        const parsed =
+          new Date(
+            item.dateText ||
+            item.date
+          )
+
+        if (
+          Number.isNaN(
+            parsed.getTime()
+          )
+        ) {
+          return false
+        }
+
+        const day =
           String(
-            item.date || ''
-          ).trim() === date
-      )
+            parsed.getDate()
+          ).padStart(2, '0')
+
+        const monthValue =
+          String(
+            parsed.getMonth() + 1
+          ).padStart(2, '0')
+
+        const yearValue =
+          String(
+            parsed.getFullYear()
+          )
+
+        const normalizedDate =
+          `${day}/${monthValue}/${yearValue}`
+
+        return (
+          normalizedDate ===
+          date
+        )
+      })
   }
+
+  // ==================================================
+  // FINAL DEBUG
+  // ==================================================
 
   console.log(
     'GOOGLE SHEET RESULT:',
@@ -930,6 +940,26 @@ async function querySheet(
       count:
         filtered.length
     }
+  )
+
+  console.log(
+    'GOOGLE SHEET RESULT LIST:',
+    filtered
+      .slice(0, 20)
+      .map(item => ({
+        employeeCode:
+          item.employeeCode,
+        bn:
+          item.bn,
+        hn:
+          item.hn,
+        name:
+          item.name,
+        dateText:
+          item.dateText,
+        total:
+          item.total
+      }))
   )
 
   return {
