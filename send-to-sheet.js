@@ -20,6 +20,7 @@ const SHEET_NAME = 'Sheet1'
 // ==================================================
 
 function getGoogleAuth() {
+
   if (!GOOGLE_SERVICE_ACCOUNT_EMAIL) {
     throw new Error(
       '❌ Missing env: GOOGLE_SERVICE_ACCOUNT_EMAIL'
@@ -38,17 +39,71 @@ function getGoogleAuth() {
     )
   }
 
+  // รองรับทั้ง:
+  // 1. -----BEGIN PRIVATE KEY-----\nxxxxx\n-----END PRIVATE KEY-----
+  // 2. -----BEGIN PRIVATE KEY-----
+  //    xxxxx
+  //    -----END PRIVATE KEY-----
+
+  const privateKey = GOOGLE_PRIVATE_KEY
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim()
+
+  console.log(
+    'GOOGLE SERVICE ACCOUNT:',
+    GOOGLE_SERVICE_ACCOUNT_EMAIL
+  )
+
+  console.log(
+    'PRIVATE KEY FORMAT:',
+    privateKey.startsWith('-----BEGIN PRIVATE KEY-----')
+      ? 'OK'
+      : 'INVALID'
+  )
+
+  console.log(
+    'PRIVATE KEY END:',
+    privateKey.endsWith('-----END PRIVATE KEY-----')
+      ? 'OK'
+      : 'INVALID'
+  )
+
+  if (
+    !privateKey.startsWith(
+      '-----BEGIN PRIVATE KEY-----'
+    )
+  ) {
+    throw new Error(
+      '❌ GOOGLE_PRIVATE_KEY ไม่ได้ขึ้นต้นด้วย -----BEGIN PRIVATE KEY-----'
+    )
+  }
+
+  if (
+    !privateKey.endsWith(
+      '-----END PRIVATE KEY-----'
+    )
+  ) {
+    throw new Error(
+      '❌ GOOGLE_PRIVATE_KEY ไม่ได้ลงท้ายด้วย -----END PRIVATE KEY-----'
+    )
+  }
+
   return new google.auth.GoogleAuth({
+
     credentials: {
-      client_email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      client_email:
+        GOOGLE_SERVICE_ACCOUNT_EMAIL,
 
       private_key:
-        GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n')
+        privateKey
     },
 
     scopes: [
       'https://www.googleapis.com/auth/spreadsheets'
     ]
+
   })
 }
 
@@ -57,10 +112,12 @@ function getGoogleAuth() {
 // ==================================================
 
 function toSheetRow(data) {
+
   const itemsJson =
     JSON.stringify(data.items || [])
 
   return [
+
     // A - Timestamp
     data.timestamp ||
       new Date().toISOString(),
@@ -111,6 +168,7 @@ function toSheetRow(data) {
 
     // P - Raw OCR
     data.raw || ''
+
   ]
 }
 
@@ -120,14 +178,17 @@ function toSheetRow(data) {
 
 async function sendToSheet(data) {
 
-  const auth = getGoogleAuth()
+  const auth =
+    getGoogleAuth()
 
-  const sheets = google.sheets({
-    version: 'v4',
-    auth
-  })
+  const sheets =
+    google.sheets({
+      version: 'v4',
+      auth
+    })
 
-  const row = toSheetRow(data)
+  const row =
+    toSheetRow(data)
 
   try {
 
@@ -174,9 +235,11 @@ async function sendToSheet(data) {
           'INSERT_ROWS',
 
         requestBody: {
+
           values: [
             row
           ]
+
         }
 
       })
@@ -241,11 +304,14 @@ async function sendToSheet(data) {
     )
 
     throw err
+
   }
+
 }
 
 // ==================================================
 // EXPORT
 // ==================================================
 
-module.exports = sendToSheet
+module.exports =
+  sendToSheet
