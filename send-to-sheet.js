@@ -20,6 +20,7 @@ const SHEET_NAME = 'Sheet1'
 // ==================================================
 
 function getGoogleAuth() {
+
   if (!GOOGLE_SERVICE_ACCOUNT_EMAIL) {
     throw new Error(
       '❌ Missing env: GOOGLE_SERVICE_ACCOUNT_EMAIL'
@@ -41,11 +42,9 @@ function getGoogleAuth() {
   let privateKey =
     GOOGLE_PRIVATE_KEY
 
-  // รองรับกรณี Render เก็บ \n เป็นตัวอักษร
   privateKey =
     privateKey.replace(/\\n/g, '\n')
 
-  // รองรับกรณีมี quote ครอบทั้งค่า
   privateKey =
     privateKey.replace(/^"|"$/g, '')
 
@@ -70,6 +69,7 @@ function getGoogleAuth() {
   }
 
   return new google.auth.GoogleAuth({
+
     credentials: {
       client_email:
         GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -81,86 +81,58 @@ function getGoogleAuth() {
     scopes: [
       'https://www.googleapis.com/auth/spreadsheets'
     ]
+
   })
 }
 
 // ==================================================
 // CONVERT DATA TO SHEET ROW
 // ==================================================
-//
-// Sheet1:
-//
-// A timestamp
-// B employeeCode
-// C bn
-// D dateText
-// E timeText
-// F hn
-// G name
-// H paymentType
-// I vat
-// J total
-// K doctorFee
-// L hospital&nursing
-// M other
-// N itemJson
-// O raw
-//
-// ==================================================
 
 function toSheetRow(data) {
+
   const itemsJson =
     JSON.stringify(
       data.items || []
     )
 
   return [
-    // A - timestamp
+
     data.timestamp ||
       new Date().toISOString(),
 
-    // B - employeeCode
     data.employeeCode || '',
 
-    // C - bn
-    data.bn || data.receiptNo || '',
+    data.bn ||
+      data.receiptNo ||
+      '',
 
-    // D - dateText
     data.receiptDateRaw || '',
 
-    // E - timeText
     data.timeText || '',
 
-    // F - hn
     data.hn || '',
 
-    // G - name
     data.patientName || '',
 
-    // H - paymentType
     data.paymentType || '',
 
-    // I - vat
     data.vat || '',
 
-    // J - total
     data.total || '',
 
-    // K - doctorFee
     data.doctorFee || '',
 
-    // L - hospital&nursing
     data.hospitalNursing || '',
 
-    // M - other
     data.other || '',
 
-    // N - itemJson
     itemsJson,
 
-    // O - raw
     data.raw || ''
+
   ]
+
 }
 
 // ==================================================
@@ -168,6 +140,7 @@ function toSheetRow(data) {
 // ==================================================
 
 async function sendToSheet(data) {
+
   const auth =
     getGoogleAuth()
 
@@ -181,6 +154,7 @@ async function sendToSheet(data) {
     toSheetRow(data)
 
   try {
+
     console.log(
       '=============================='
     )
@@ -210,6 +184,7 @@ async function sendToSheet(data) {
 
     const response =
       await sheets.spreadsheets.values.append({
+
         spreadsheetId:
           SHEET_ID,
 
@@ -223,10 +198,13 @@ async function sendToSheet(data) {
           'INSERT_ROWS',
 
         requestBody: {
+
           values: [
             row
           ]
+
         }
+
       })
 
     console.log(
@@ -254,6 +232,7 @@ async function sendToSheet(data) {
     return response.data
 
   } catch (err) {
+
     console.error(
       '=============================='
     )
@@ -263,6 +242,7 @@ async function sendToSheet(data) {
     )
 
     if (err.response) {
+
       console.error(
         'STATUS:',
         err.response.status
@@ -272,11 +252,14 @@ async function sendToSheet(data) {
         'DATA:',
         err.response.data
       )
+
     } else {
+
       console.error(
         'MESSAGE:',
         err.message
       )
+
     }
 
     console.error(
@@ -284,7 +267,9 @@ async function sendToSheet(data) {
     )
 
     throw err
+
   }
+
 }
 
 // ==================================================
