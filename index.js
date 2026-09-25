@@ -3,7 +3,6 @@ require('dotenv').config()
 const express = require('express')
 const axios = require('axios')
 const { google } = require('googleapis')
-
 const sendToSheet = require('./send-to-sheet')
 
 const {
@@ -17,8 +16,16 @@ app.use(express.json())
 
 const LINE_TOKEN = process.env.LINE_TOKEN
 const SHEET_ID = process.env.SHEET_ID
-const GOOGLE_SERVICE_ACCOUNT =
-  process.env.GOOGLE_SERVICE_ACCOUNT
+
+// ==================================================
+// GOOGLE SERVICE ACCOUNT
+// ==================================================
+
+const GOOGLE_SERVICE_ACCOUNT_EMAIL =
+  process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
+
+const GOOGLE_PRIVATE_KEY =
+  process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n')
 
 // ==================================================
 // GOOGLE SHEETS
@@ -35,26 +42,28 @@ function getSheetsClient() {
     throw new Error('Missing env: SHEET_ID')
   }
 
-  if (!GOOGLE_SERVICE_ACCOUNT) {
+  if (!GOOGLE_SERVICE_ACCOUNT_EMAIL) {
     throw new Error(
-      'Missing env: GOOGLE_SERVICE_ACCOUNT'
+      'Missing env: GOOGLE_SERVICE_ACCOUNT_EMAIL'
     )
   }
 
-  let credentials
-
-  try {
-    credentials =
-      JSON.parse(GOOGLE_SERVICE_ACCOUNT)
-  } catch (err) {
+  if (!GOOGLE_PRIVATE_KEY) {
     throw new Error(
-      'GOOGLE_SERVICE_ACCOUNT is not valid JSON'
+      'Missing env: GOOGLE_PRIVATE_KEY'
     )
   }
 
   const auth =
     new google.auth.GoogleAuth({
-      credentials,
+      credentials: {
+        client_email:
+          GOOGLE_SERVICE_ACCOUNT_EMAIL,
+
+        private_key:
+          GOOGLE_PRIVATE_KEY
+      },
+
       scopes: [
         'https://www.googleapis.com/auth/spreadsheets'
       ]
@@ -82,11 +91,9 @@ function defaultState() {
     mode: 'idle',
     step: 'idle',
 
-    // upload
     employeeCode: '',
     waitingSince: null,
 
-    // search
     searchType: '',
     searchMonth: '',
     searchYear: '',
@@ -234,9 +241,7 @@ function formatNumber(value) {
     return String(value)
   }
 
-  return num.toLocaleString(
-    'en-US'
-  )
+  return num.toLocaleString('en-US')
 }
 
 // ==================================================
@@ -302,6 +307,7 @@ async function reply(
     'https://api.line.me/v2/bot/message/reply',
     {
       replyToken,
+
       messages: [
         {
           type: 'text',
@@ -334,17 +340,15 @@ async function getSheetValues(
     getSheetsClient()
 
   const res =
-    await sheets.spreadsheets.values.get(
-      {
-        spreadsheetId:
-          SHEET_ID,
+    await sheets.spreadsheets.values.get({
+      spreadsheetId:
+        SHEET_ID,
 
-        range,
+      range,
 
-        majorDimension:
-          'ROWS'
-      }
-    )
+      majorDimension:
+        'ROWS'
+    })
 
   return (
     res.data.values || []
@@ -424,19 +428,17 @@ async function querySheet(
   // --------------------------------------------------
 
   const response =
-    await sheets.spreadsheets.values.get(
-      {
-        spreadsheetId:
-          SHEET_ID,
+    await sheets.spreadsheets.values.get({
+      spreadsheetId:
+        SHEET_ID,
 
-        range:
-          process.env.SHEET_RANGE ||
-          'Sheet1!A:Z',
+      range:
+        process.env.SHEET_RANGE ||
+        'Sheet1!A:Z',
 
-        majorDimension:
-          'ROWS'
-      }
-    )
+      majorDimension:
+        'ROWS'
+    })
 
   const rows =
     response.data.values || []
@@ -472,8 +474,7 @@ async function querySheet(
     ) {
       const index =
         headers.indexOf(
-          possibleName
-            .toLowerCase()
+          possibleName.toLowerCase()
         )
 
       if (
@@ -516,9 +517,7 @@ async function querySheet(
       hn:
         getColumn(
           row,
-          [
-            'hn'
-          ]
+          ['hn']
         ),
 
       name:
@@ -565,9 +564,7 @@ async function querySheet(
       total:
         getColumn(
           row,
-          [
-            'total'
-          ]
+          ['total']
         ),
 
       doctorFee:
@@ -593,25 +590,19 @@ async function querySheet(
       other:
         getColumn(
           row,
-          [
-            'other'
-          ]
+          ['other']
         ),
 
       month:
         getColumn(
           row,
-          [
-            'month'
-          ]
+          ['month']
         ),
 
       year:
         getColumn(
           row,
-          [
-            'year'
-          ]
+          ['year']
         )
     }
   }
@@ -857,18 +848,14 @@ app.post(
       req.body.events?.[0]
 
     if (!event) {
-      return res.sendStatus(
-        200
-      )
+      return res.sendStatus(200)
     }
 
     const userId =
       event.source?.userId
 
     if (!userId) {
-      return res.sendStatus(
-        200
-      )
+      return res.sendStatus(200)
     }
 
     let state =
@@ -908,19 +895,14 @@ app.post(
             )
           ) {
 
-            resetState(
-              userId
-            )
+            resetState(userId)
 
             await reply(
               event.replyToken,
-
               '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
             )
 
-            return res.sendStatus(
-              200
-            )
+            return res.sendStatus(200)
           }
         }
 
@@ -929,8 +911,7 @@ app.post(
         // ==================================================
 
         if (
-          state.mode ===
-            'search' &&
+          state.mode === 'search' &&
           state.step !== 'idle'
         ) {
 
@@ -941,19 +922,14 @@ app.post(
             )
           ) {
 
-            resetState(
-              userId
-            )
+            resetState(userId)
 
             await reply(
               event.replyToken,
-
               '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะค้นหาใหม่ พิมพ์ "ค้นหา"'
             )
 
-            return res.sendStatus(
-              200
-            )
+            return res.sendStatus(200)
           }
         }
 
@@ -972,28 +948,20 @@ app.post(
 
             await reply(
               event.replyToken,
-
               'ตอนนี้ยังไม่ได้เริ่มอะไรครับ 🙂\nพิมพ์ "ส่งเอกสาร" หรือ "ค้นหา" ได้เลย'
             )
 
-            return res.sendStatus(
-              200
-            )
+            return res.sendStatus(200)
           }
 
-          resetState(
-            userId
-          )
+          resetState(userId)
 
           await reply(
             event.replyToken,
-
             '❌ ยกเลิกเรียบร้อยครับ'
           )
 
-          return res.sendStatus(
-            200
-          )
+          return res.sendStatus(200)
         }
 
         // ==================================================
@@ -1007,37 +975,27 @@ app.post(
 
           await reply(
             event.replyToken,
-
             `📌 วิธีใช้งาน
 
 🟦 ส่งเอกสาร
 
 1) พิมพ์ "ส่งเอกสาร"
-
 2) ใส่รหัสพนักงาน
-
 3) ส่งรูปใบเสร็จทีละ 1 รูป
 
 🔎 ค้นหา
 
 1) พิมพ์ "ค้นหา"
-
 2) ใส่รหัสพนักงาน
-
 3) เลือกเดือน
-
 4) เลือกปี
-
 5) เลือกประเภท
 
 ประเภทค้นหา:
 
 1) BN
-
 2) HN
-
 3) NAME
-
 4) DATE
 
 DATE ตัวอย่าง:
@@ -1047,9 +1005,7 @@ DATE ตัวอย่าง:
 พิมพ์ "ยกเลิก" ได้ทุกขั้นตอน`
           )
 
-          return res.sendStatus(
-            200
-          )
+          return res.sendStatus(200)
         }
 
         // ==================================================
@@ -1061,9 +1017,7 @@ DATE ตัวอย่าง:
         ) {
 
           state =
-            resetState(
-              userId
-            )
+            resetState(userId)
 
           state.mode =
             'upload'
@@ -1073,13 +1027,10 @@ DATE ตัวอย่าง:
 
           await reply(
             event.replyToken,
-
             '🟦 ส่งเอกสาร\nกรุณาพิมพ์รหัสพนักงานครับ 👤'
           )
 
-          return res.sendStatus(
-            200
-          )
+          return res.sendStatus(200)
         }
 
         // ==================================================
@@ -1091,9 +1042,7 @@ DATE ตัวอย่าง:
         ) {
 
           state =
-            resetState(
-              userId
-            )
+            resetState(userId)
 
           state.mode =
             'search'
@@ -1106,13 +1055,10 @@ DATE ตัวอย่าง:
 
           await reply(
             event.replyToken,
-
             '🔎 ค้นหา\nกรุณาพิมพ์รหัสพนักงานก่อนครับ 👤'
           )
 
-          return res.sendStatus(
-            200
-          )
+          return res.sendStatus(200)
         }
 
         // ==================================================
@@ -1134,25 +1080,18 @@ DATE ตัวอย่าง:
           ) {
 
             const code =
-              normalizeEmployeeCode(
-                text
-              )
+              normalizeEmployeeCode(text)
 
             if (
-              !isValidEmployeeCode(
-                code
-              )
+              !isValidEmployeeCode(code)
             ) {
 
               await reply(
                 event.replyToken,
-
                 '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             state.employeeCode =
@@ -1166,15 +1105,12 @@ DATE ตัวอย่าง:
 
             await reply(
               event.replyToken,
-
               `โอเคครับ 👤 ${code}
 
 ส่งรูปใบเสร็จมาได้เลยครับ (ทีละ 1 รูป) 🧾`
             )
 
-            return res.sendStatus(
-              200
-            )
+            return res.sendStatus(200)
           }
 
           // ==================================================
@@ -1188,13 +1124,10 @@ DATE ตัวอย่าง:
 
             await reply(
               event.replyToken,
-
               'ตอนนี้รอรูปใบเสร็จอยู่นะครับ 🧾\nส่งรูปมาได้เลย หรือพิมพ์ "ยกเลิก"'
             )
 
-            return res.sendStatus(
-              200
-            )
+            return res.sendStatus(200)
           }
         }
 
@@ -1217,25 +1150,18 @@ DATE ตัวอย่าง:
           ) {
 
             const code =
-              normalizeEmployeeCode(
-                text
-              )
+              normalizeEmployeeCode(text)
 
             if (
-              !isValidEmployeeCode(
-                code
-              )
+              !isValidEmployeeCode(code)
             ) {
 
               await reply(
                 event.replyToken,
-
                 '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             state.employeeCode =
@@ -1249,7 +1175,6 @@ DATE ตัวอย่าง:
 
             await reply(
               event.replyToken,
-
               `โอเคครับ 👤 ${code}
 
 กรุณาเลือกเดือนที่ต้องการค้นหา
@@ -1261,9 +1186,7 @@ DATE ตัวอย่าง:
 01 = มกราคม`
             )
 
-            return res.sendStatus(
-              200
-            )
+            return res.sendStatus(200)
           }
 
           // ==================================================
@@ -1291,7 +1214,6 @@ DATE ตัวอย่าง:
 
               await reply(
                 event.replyToken,
-
                 `📅 แก้เดือน
 
 กรุณาพิมพ์เดือน 01 - 12
@@ -1303,26 +1225,19 @@ DATE ตัวอย่าง:
 หรือพิมพ์ "ยกเลิก"`
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             if (
-              !isValidMonth(
-                month
-              )
+              !isValidMonth(month)
             ) {
 
               await reply(
                 event.replyToken,
-
                 '❌ เดือนไม่ถูกต้องครับ\nต้องเป็น 01 ถึง 12 เท่านั้น\nหรือพิมพ์ "ยกเลิก"'
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             state.searchMonth =
@@ -1336,7 +1251,6 @@ DATE ตัวอย่าง:
 
             await reply(
               event.replyToken,
-
               `📅 เดือน ${month}
 
 กรุณาพิมพ์ปี ค.ศ. 4 หลัก
@@ -1352,9 +1266,7 @@ ${getYearRangeText()}
 ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"`
             )
 
-            return res.sendStatus(
-              200
-            )
+            return res.sendStatus(200)
           }
 
           // ==================================================
@@ -1382,7 +1294,6 @@ ${getYearRangeText()}
 
               await reply(
                 event.replyToken,
-
                 `📅 แก้ปี
 
 กรุณาพิมพ์ปี ค.ศ. 4 หลัก
@@ -1398,15 +1309,11 @@ ${getYearRangeText()}
 หรือพิมพ์ "ยกเลิก"`
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             if (
-              !isValidYear(
-                year
-              )
+              !isValidYear(year)
             ) {
 
               const currentYear =
@@ -1417,7 +1324,6 @@ ${getYearRangeText()}
 
               await reply(
                 event.replyToken,
-
                 `❌ ปีไม่ถูกต้องครับ
 
 ปีต้องอยู่ระหว่าง ${minYear} - ${currentYear}
@@ -1433,9 +1339,7 @@ ${getYearRangeText()}
 หรือ "ยกเลิก"`
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             state.searchYear =
@@ -1449,21 +1353,16 @@ ${getYearRangeText()}
 
             await reply(
               event.replyToken,
-
               `📅 ช่วงค้นหา
 
 เดือน: ${state.searchMonth}
-
 ปี: ${state.searchYear}
 
 เลือกประเภทค้นหา (พิมพ์เลข):
 
 1) BN
-
 2) HN
-
 3) NAME
-
 4) DATE
 
 ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"
@@ -1471,9 +1370,7 @@ ${getYearRangeText()}
 ถ้าต้องการแก้ปี พิมพ์ "แก้ปี"`
             )
 
-            return res.sendStatus(
-              200
-            )
+            return res.sendStatus(200)
           }
 
           // ==================================================
@@ -1499,13 +1396,10 @@ ${getYearRangeText()}
 
               await reply(
                 event.replyToken,
-
                 '❌ กรุณาพิมพ์แค่ 1 / 2 / 3 / 4\nหรือพิมพ์ "ยกเลิก"'
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             state.searchType =
@@ -1553,11 +1447,9 @@ ${getYearRangeText()}
 
             await reply(
               event.replyToken,
-
               `🔎 ประเภท: ${state.searchType}
 
 เดือน: ${state.searchMonth}
-
 ปี: ${state.searchYear}
 
 ${hint}
@@ -1565,9 +1457,7 @@ ${hint}
 พิมพ์ค่าที่ต้องการค้นหาได้เลยครับ`
             )
 
-            return res.sendStatus(
-              200
-            )
+            return res.sendStatus(200)
           }
 
           // ==================================================
@@ -1595,13 +1485,10 @@ ${hint}
 
               await reply(
                 event.replyToken,
-
                 '❌ ค่าว่างครับ พิมพ์ใหม่อีกครั้ง หรือพิมพ์ "ยกเลิก"'
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             // ==================================================
@@ -1614,20 +1501,15 @@ ${hint}
             ) {
 
               if (
-                !isValidDate(
-                  value
-                )
+                !isValidDate(value)
               ) {
 
                 await reply(
                   event.replyToken,
-
                   '❌ รูปแบบวันที่ไม่ถูกต้องครับ\nต้องเป็น DD/MM/YYYY\nตัวอย่าง 11/02/2026'
                 )
 
-                return res.sendStatus(
-                  200
-                )
+                return res.sendStatus(200)
               }
 
               const [
@@ -1638,21 +1520,17 @@ ${hint}
                 value.split('/')
 
               if (
-                dateMonth !==
-                  month ||
-                dateYear !==
-                  year
+                dateMonth !== month ||
+                dateYear !== year
               ) {
 
                 await reply(
                   event.replyToken,
-
                   `❌ วันที่ไม่ตรงกับช่วงที่เลือกครับ
 
 คุณเลือก:
 
 เดือน ${month}
-
 ปี ${year}
 
 แต่วันที่ที่พิมพ์คือ:
@@ -1662,9 +1540,7 @@ ${value}
 กรุณาพิมพ์วันที่ที่อยู่ในเดือน ${month}/${year} ครับ`
                 )
 
-                return res.sendStatus(
-                  200
-                )
+                return res.sendStatus(200)
               }
             }
 
@@ -1719,9 +1595,7 @@ ${value}
                   ? result.list
                   : []
 
-              resetState(
-                userId
-              )
+              resetState(userId)
 
               if (
                 list.length ===
@@ -1730,23 +1604,17 @@ ${value}
 
                 await reply(
                   event.replyToken,
-
                   `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
-
 Month: ${month}
-
 Year: ${year}
-
 BN: ${value}
 
 ลองตรวจสอบข้อมูลอีกครั้งครับ`
                 )
 
-                return res.sendStatus(
-                  200
-                )
+                return res.sendStatus(200)
               }
 
               const messages =
@@ -1764,15 +1632,11 @@ BN: ${value}
 
               await reply(
                 event.replyToken,
-
                 `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
-
 Month: ${month}
-
 Year: ${year}
-
 BN: ${value}
 
 ${messages}
@@ -1780,9 +1644,7 @@ ${messages}
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             // ==================================================
@@ -1826,9 +1688,7 @@ ${messages}
                   ? result.list
                   : []
 
-              resetState(
-                userId
-              )
+              resetState(userId)
 
               if (
                 list.length ===
@@ -1837,15 +1697,11 @@ ${messages}
 
                 await reply(
                   event.replyToken,
-
                   `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
-
 Month: ${month}
-
 Year: ${year}
-
 HN: ${value}
 
 ลองตรวจสอบข้อมูลอีกครั้งครับ
@@ -1853,9 +1709,7 @@ HN: ${value}
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
                 )
 
-                return res.sendStatus(
-                  200
-                )
+                return res.sendStatus(200)
               }
 
               const preview =
@@ -1879,13 +1733,10 @@ HN: ${value}
 
               await reply(
                 event.replyToken,
-
                 `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
-
 Month: ${month}
-
 Year: ${year}
 
 ${preview}${moreText}
@@ -1893,9 +1744,7 @@ ${preview}${moreText}
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             // ==================================================
@@ -1939,9 +1788,7 @@ ${preview}${moreText}
                   ? result.list
                   : []
 
-              resetState(
-                userId
-              )
+              resetState(userId)
 
               if (
                 list.length ===
@@ -1950,23 +1797,17 @@ ${preview}${moreText}
 
                 await reply(
                   event.replyToken,
-
                   `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
-
 Month: ${month}
-
 Year: ${year}
-
 NAME: ${value}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
                 )
 
-                return res.sendStatus(
-                  200
-                )
+                return res.sendStatus(200)
               }
 
               const preview =
@@ -1990,15 +1831,11 @@ NAME: ${value}
 
               await reply(
                 event.replyToken,
-
                 `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
-
 Month: ${month}
-
 Year: ${year}
-
 NAME: ${value}
 
 ${preview}${moreText}
@@ -2006,9 +1843,7 @@ ${preview}${moreText}
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
 
             // ==================================================
@@ -2052,9 +1887,7 @@ ${preview}${moreText}
                   ? result.list
                   : []
 
-              resetState(
-                userId
-              )
+              resetState(userId)
 
               if (
                 list.length ===
@@ -2063,23 +1896,17 @@ ${preview}${moreText}
 
                 await reply(
                   event.replyToken,
-
                   `❌ ไม่พบข้อมูลครับ 😅
 
 Employee: ${employeeCode}
-
 Month: ${month}
-
 Year: ${year}
-
 DATE: ${value}
 
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
                 )
 
-                return res.sendStatus(
-                  200
-                )
+                return res.sendStatus(200)
               }
 
               const messages =
@@ -2097,15 +1924,11 @@ DATE: ${value}
 
               await reply(
                 event.replyToken,
-
                 `🔎 พบทั้งหมด ${list.length} รายการ
 
 Employee: ${employeeCode}
-
 Month: ${month}
-
 Year: ${year}
-
 DATE: ${value}
 
 ${messages}
@@ -2113,9 +1936,7 @@ ${messages}
 พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
               )
 
-              return res.sendStatus(
-                200
-              )
+              return res.sendStatus(200)
             }
           }
         }
@@ -2126,13 +1947,10 @@ ${messages}
 
         await reply(
           event.replyToken,
-
           'พิมพ์ "ส่งเอกสาร" เพื่อส่งใบเสร็จ\nหรือพิมพ์ "ค้นหา" เพื่อค้นหาข้อมูล\nหรือพิมพ์ "วิธีใช้"'
         )
 
-        return res.sendStatus(
-          200
-        )
+        return res.sendStatus(200)
       }
 
       // ==================================================
@@ -2145,22 +1963,17 @@ ${messages}
       ) {
 
         if (
-          state.mode !==
-            'upload' ||
-          state.step !==
-            'waitingImage' ||
+          state.mode !== 'upload' ||
+          state.step !== 'waitingImage' ||
           !state.employeeCode
         ) {
 
           await reply(
             event.replyToken,
-
             'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" แล้วใส่รหัสพนักงานก่อนครับ 🙂'
           )
 
-          return res.sendStatus(
-            200
-          )
+          return res.sendStatus(200)
         }
 
         // ==================================================
@@ -2174,19 +1987,14 @@ ${messages}
           )
         ) {
 
-          resetState(
-            userId
-          )
+          resetState(userId)
 
           await reply(
             event.replyToken,
-
             '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
           )
 
-          return res.sendStatus(
-            200
-          )
+          return res.sendStatus(200)
         }
 
         const messageId =
@@ -2230,13 +2038,10 @@ ${messages}
 
           await reply(
             event.replyToken,
-
             'อ่านตัวอักษรไม่ออกครับ 😅 กรุณาลองถ่ายใหม่ให้ชัดขึ้น'
           )
 
-          return res.sendStatus(
-            200
-          )
+          return res.sendStatus(200)
         }
 
         // ==================================================
@@ -2263,13 +2068,10 @@ ${messages}
 
           await reply(
             event.replyToken,
-
             '❌ รูปนี้ไม่ใช่ใบเสร็จรูปแบบที่รองรับครับ\nกรุณาส่งใบเสร็จ Asoke Skin Hospital เท่านั้น 🧾'
           )
 
-          return res.sendStatus(
-            200
-          )
+          return res.sendStatus(200)
         }
 
         // ==================================================
@@ -2285,16 +2087,13 @@ ${messages}
           state.employeeCode
 
         parsed.doctorFee =
-          parsed.doctorFee ||
-          ''
+          parsed.doctorFee || ''
 
         parsed.hospitalNursing =
-          parsed.hospitalNursing ||
-          ''
+          parsed.hospitalNursing || ''
 
         parsed.other =
-          parsed.other ||
-          ''
+          parsed.other || ''
 
         console.log(
           'Parsed expense:',
@@ -2327,7 +2126,6 @@ ${messages}
 
         await reply(
           event.replyToken,
-
           `✅ บันทึกเรียบร้อยครับ
 
 👤 รหัสพนักงาน: ${state.employeeCode}
@@ -2351,9 +2149,7 @@ Other: ${formatNumber(parsed.other)}
 หรือพิมพ์ "ยกเลิก" เพื่อจบ`
         )
 
-        return res.sendStatus(
-          200
-        )
+        return res.sendStatus(200)
       }
 
     } catch (err) {
@@ -2368,7 +2164,6 @@ Other: ${formatNumber(parsed.other)}
 
         await reply(
           event.replyToken,
-
           '⚠️ ระบบค้นหาหรือประมวลผลเกิดข้อผิดพลาดครับ\nกรุณาลองใหม่อีกครั้ง'
         )
 
@@ -2382,9 +2177,7 @@ Other: ${formatNumber(parsed.other)}
       }
     }
 
-    return res.sendStatus(
-      200
-    )
+    return res.sendStatus(200)
   }
 )
 
