@@ -2,6 +2,7 @@ require('dotenv').config()
 
 const express = require('express')
 const axios = require('axios')
+
 const sendToSheet = require('./send-to-sheet')
 
 const {
@@ -50,7 +51,9 @@ function getState(userId) {
 
 function resetState(userId) {
   const state = defaultState()
+
   userState.set(userId, state)
+
   return state
 }
 
@@ -177,7 +180,9 @@ Total: ${formatNumber(d.total)}
 Doctor Fee: ${formatNumber(d.doctorFee)}
 
 Hospital & Nursing: ${formatNumber(
-    d.hospitalNursing || d.hospitalNursingFee || d.hospital_nursing
+    d.hospitalNursing ||
+    d.hospitalNursingFee ||
+    d.hospital_nursing
   )}
 
 Other: ${formatNumber(d.other)}`
@@ -227,11 +232,7 @@ async function querySheet(params = {}) {
     secret: SHEET_SECRET
   }
 
-  console.log('==============================')
-  console.log('SHEET QUERY')
-  console.log('URL:', SHEET_URL)
-  console.log('PARAMS:', queryParams)
-  console.log('==============================')
+  console.log('SHEET QUERY:', queryParams)
 
   try {
     const res = await axios.get(
@@ -242,25 +243,15 @@ async function querySheet(params = {}) {
       }
     )
 
-    console.log('==============================')
-    console.log('SHEET RESPONSE')
-    console.log(res.data)
-    console.log('==============================')
+    console.log('SHEET RESPONSE:', res.data)
 
     return res.data
 
   } catch (err) {
-    console.error('==============================')
-    console.error('SHEET QUERY ERROR')
-
-    if (err.response) {
-      console.error('STATUS:', err.response.status)
-      console.error('DATA:', err.response.data)
-    } else {
-      console.error('MESSAGE:', err.message)
-    }
-
-    console.error('==============================')
+    console.error(
+      'SHEET QUERY ERROR:',
+      err.response?.data || err.message
+    )
 
     throw err
   }
@@ -287,7 +278,10 @@ function isValidYear(text) {
   const minYear = currentYear - 5
   const year = Number(text)
 
-  return year >= minYear && year <= currentYear
+  return (
+    year >= minYear &&
+    year <= currentYear
+  )
 }
 
 // ==================================================
@@ -316,12 +310,11 @@ function isValidDate(text) {
   const [day, month, year] =
     text.split('/').map(Number)
 
-  const date =
-    new Date(
-      year,
-      month - 1,
-      day
-    )
+  const date = new Date(
+    year,
+    month - 1,
+    day
+  )
 
   return (
     date.getFullYear() === year &&
@@ -335,7 +328,6 @@ function isValidDate(text) {
 // ==================================================
 
 app.post('/webhook', async (req, res) => {
-
   const event = req.body.events?.[0]
 
   if (!event) {
@@ -457,22 +449,31 @@ app.post('/webhook', async (req, res) => {
 🟦 ส่งเอกสาร
 
 1) พิมพ์ "ส่งเอกสาร"
+
 2) ใส่รหัสพนักงาน
+
 3) ส่งรูปใบเสร็จทีละ 1 รูป
 
 🔎 ค้นหา
 
 1) พิมพ์ "ค้นหา"
+
 2) ใส่รหัสพนักงาน
+
 3) เลือกเดือน
+
 4) เลือกปี
+
 5) เลือกประเภท
 
 ประเภทค้นหา:
 
 1) BN
+
 2) HN
+
 3) NAME
+
 4) DATE
 
 DATE ตัวอย่าง:
@@ -557,7 +558,9 @@ DATE ตัวอย่าง:
 
           await reply(
             event.replyToken,
-            `โอเคครับ 👤 ${code}\nส่งรูปใบเสร็จมาได้เลยครับ (ทีละ 1 รูป) 🧾`
+            `โอเคครับ 👤 ${code}
+
+ส่งรูปใบเสร็จมาได้เลยครับ (ทีละ 1 รูป) 🧾`
           )
 
           return res.sendStatus(200)
@@ -609,7 +612,6 @@ DATE ตัวอย่าง:
           }
 
           state.employeeCode = code
-
           state.step = 'waitingSearchMonth'
           state.searchWaitingSince = Date.now()
 
@@ -639,10 +641,6 @@ DATE ตัวอย่าง:
 
           const month = text.trim()
 
-          // ------------------------------------------
-          // แก้เดือน
-          // ------------------------------------------
-
           if (month === 'แก้เดือน') {
 
             state.step = 'waitingSearchMonth'
@@ -664,10 +662,6 @@ DATE ตัวอย่าง:
             return res.sendStatus(200)
           }
 
-          // ------------------------------------------
-          // ตรวจสอบเดือน
-          // ------------------------------------------
-
           if (!isValidMonth(month)) {
 
             await reply(
@@ -679,7 +673,6 @@ DATE ตัวอย่าง:
           }
 
           state.searchMonth = month
-
           state.step = 'waitingSearchYear'
           state.searchWaitingSince = Date.now()
 
@@ -713,10 +706,6 @@ ${getYearRangeText()}
 
           const year = text.trim()
 
-          // ------------------------------------------
-          // แก้ปี
-          // ------------------------------------------
-
           if (year === 'แก้ปี') {
 
             state.step = 'waitingSearchYear'
@@ -741,10 +730,6 @@ ${getYearRangeText()}
 
             return res.sendStatus(200)
           }
-
-          // ------------------------------------------
-          // ตรวจสอบปี
-          // ------------------------------------------
 
           if (!isValidYear(year)) {
 
@@ -775,7 +760,6 @@ ${getYearRangeText()}
           }
 
           state.searchYear = year
-
           state.step = 'chooseSearchType'
           state.searchWaitingSince = Date.now()
 
@@ -993,14 +977,11 @@ ${value}
               result
             )
 
-            resetState(userId)
-
             const list =
               Array.isArray(result?.list)
                 ? result.list
                 : []
 
-            // รองรับ API รุ่นเก่า
             if (
               list.length === 0 &&
               result?.found === true &&
@@ -1008,6 +989,8 @@ ${value}
             ) {
               list.push(result.data)
             }
+
+            resetState(userId)
 
             if (list.length === 0) {
 
@@ -1180,12 +1163,12 @@ ${preview}${moreText}
               result
             )
 
-            resetState(userId)
-
             const list =
               Array.isArray(result?.list)
                 ? result.list
                 : []
+
+            resetState(userId)
 
             if (list.length === 0) {
 
@@ -1199,7 +1182,9 @@ Month: ${month}
 
 Year: ${year}
 
-NAME: ${value}`
+NAME: ${value}
+
+พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
               )
 
               return res.sendStatus(200)
@@ -1270,12 +1255,12 @@ ${preview}${moreText}
               result
             )
 
-            resetState(userId)
-
             const list =
               Array.isArray(result?.list)
                 ? result.list
                 : []
+
+            resetState(userId)
 
             if (list.length === 0) {
 
@@ -1289,7 +1274,9 @@ Month: ${month}
 
 Year: ${year}
 
-DATE: ${value}`
+DATE: ${value}
+
+พิมพ์ "ค้นหา" เพื่อค้นหาใหม่`
               )
 
               return res.sendStatus(200)
@@ -1396,8 +1383,10 @@ ${messages}
               Authorization:
                 `Bearer ${LINE_TOKEN}`
             },
+
             responseType:
               'arraybuffer',
+
             timeout:
               20000
           }
@@ -1525,20 +1514,9 @@ Other: ${formatNumber(parsed.other)}
   } catch (err) {
 
     console.error(
-      '=============================='
-    )
-
-    console.error(
-      'WEBHOOK ERROR'
-    )
-
-    console.error(
+      'WEBHOOK ERROR:',
       err.response?.data ||
       err.message
-    )
-
-    console.error(
-      '=============================='
     )
 
     try {
