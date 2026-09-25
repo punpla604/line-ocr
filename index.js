@@ -14,6 +14,16 @@ const {
   getMonthlySummary
 } = require('./summary')
 
+const SUMMARY_PASSWORD =
+  String(
+    process.env.SUMMARY_PASSWORD || ''
+  ).trim()
+
+const SUMMARY_MAX_ATTEMPTS =
+  Number(
+    process.env.SUMMARY_MAX_ATTEMPTS || 3
+  )
+
 const app = express()
 
 app.use(express.json())
@@ -106,7 +116,8 @@ function defaultState() {
 
     summaryMonth: '',
     summaryYear: '',
-    summaryWaitingSince: null
+    summaryWaitingSince: null,
+    summaryPasswordAttempts: 0
   }
 }
 
@@ -1334,23 +1345,22 @@ DATE ตัวอย่าง:
             'summary'
 
           state.step =
-            'waitingSummaryMonth'
+            'waitingSummaryPassword'
+
+          state.summaryPasswordAttempts =
+            0
 
           state.summaryWaitingSince =
             Date.now()
 
           await reply(
             event.replyToken,
-            `📊 สรุปยอดรวม
+            `🔐 สรุปยอดรวม
 
-        กรุณาพิมพ์เดือนที่ต้องการสรุป
+        กรุณาใส่รหัสผ่านเพื่อดำเนินการต่อครับ
 
-        พิมพ์เลขเดือน 01 - 12
-
-        ตัวอย่าง:
-        01 = มกราคม
-
-        ข้อมูลจะรวมของพนักงานทุกคนครับ`
+        หากไม่ต้องการดำเนินการ
+        พิมพ์ "ยกเลิก"`
           )
 
           return res.sendStatus(200)
@@ -2242,7 +2252,119 @@ ${messages}
         if (
           state.mode === 'summary'
         ) {
+          // ==================================================
+          // SUMMARY PASSWORD
+          // ==================================================
 
+          if (
+            state.step ===
+            'waitingSummaryPassword'
+          ) {
+
+            const password =
+              text.trim()
+
+            // -----------------------------------------------
+            // CHECK PASSWORD
+            // -----------------------------------------------
+
+            if (
+              password ===
+              SUMMARY_PASSWORD
+            ) {
+
+              state.step =
+                'waitingSummaryMonth'
+
+              state.summaryPasswordAttempts =
+                0
+
+              state.summaryWaitingSince =
+                Date.now()
+
+              await reply(
+                event.replyToken,
+                `✅ ยืนยันตัวตนสำเร็จครับ
+
+          📊 สรุปยอดรวม
+
+          กรุณาพิมพ์เดือนที่ต้องการสรุป
+
+          พิมพ์เลขเดือน 01 - 12
+
+          ตัวอย่าง:
+          01 = มกราคม`
+              )
+
+              return res.sendStatus(200)
+            }
+
+            // -----------------------------------------------
+            // WRONG PASSWORD
+            // -----------------------------------------------
+
+            state.summaryPasswordAttempts++
+
+            const attempts =
+              state.summaryPasswordAttempts
+
+            const remaining =
+              Math.max(
+                SUMMARY_MAX_ATTEMPTS - attempts,
+                0
+              )
+
+            console.log(
+              'SUMMARY PASSWORD FAILED:',
+              {
+                userId,
+                attempts
+              }
+            )
+
+            // -----------------------------------------------
+            // TOO MANY ATTEMPTS
+            // -----------------------------------------------
+
+            if (
+              attempts >=
+              SUMMARY_MAX_ATTEMPTS
+            ) {
+
+              resetState(userId)
+
+              await reply(
+                event.replyToken,
+                `❌ ไม่สามารถยืนยันตัวตนได้
+
+          ระบบยกเลิกการเข้าใช้งานสรุปยอดรวมแล้วครับ
+
+          หากต้องการลองใหม่
+          พิมพ์ "สรุปยอดรวม" อีกครั้ง`
+              )
+
+              return res.sendStatus(200)
+            }
+
+            // -----------------------------------------------
+            // RETRY
+            // -----------------------------------------------
+
+            state.summaryWaitingSince =
+              Date.now()
+
+            await reply(
+              event.replyToken,
+              `❌ ไม่สามารถยืนยันตัวตนได้ครับ
+
+          เหลือโอกาสอีก ${remaining} ครั้ง
+
+          กรุณาลองใหม่
+          หรือพิมพ์ "ยกเลิก"`
+            )
+
+            return res.sendStatus(200)
+          }
           // ==================================================
           // SUMMARY MONTH
           // ==================================================
