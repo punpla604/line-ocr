@@ -10,6 +10,10 @@ const {
   parseReceipt
 } = require('./ocr')
 
+const {
+  getMonthlySummary
+} = require('./summary')
+
 const app = express()
 
 app.use(express.json())
@@ -92,12 +96,17 @@ function defaultState() {
     step: 'idle',
 
     employeeCode: '',
+
     waitingSince: null,
 
     searchType: '',
     searchMonth: '',
     searchYear: '',
-    searchWaitingSince: null
+    searchWaitingSince: null,
+
+    summaryMonth: '',
+    summaryYear: '',
+    summaryWaitingSince: null
   }
 }
 
@@ -1159,6 +1168,31 @@ app.post(
         }
 
         // ==================================================
+        // SUMMARY TIMEOUT
+        // ==================================================
+
+        if (
+          state.mode === 'summary' &&
+          state.step !== 'idle'
+        ) {
+          if (
+            isExpired(
+              state.summaryWaitingSince,
+              WAIT_SEARCH_MS
+            )
+          ) {
+            resetState(userId)
+
+            await reply(
+              event.replyToken,
+              '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะสรุปยอดใหม่ พิมพ์ "สรุปยอดรวม"'
+            )
+
+            return res.sendStatus(200)
+          }
+        }
+
+        // ==================================================
         // CANCEL
         // ==================================================
 
@@ -1281,6 +1315,42 @@ DATE ตัวอย่าง:
           await reply(
             event.replyToken,
             '🔎 ค้นหา\nกรุณาพิมพ์รหัสพนักงานก่อนครับ 👤'
+          )
+
+          return res.sendStatus(200)
+        }
+
+        // ==================================================
+        // START SUMMARY
+        // ==================================================
+
+        if (
+          text === 'สรุปยอดรวม'
+        ) {
+          state =
+            resetState(userId)
+
+          state.mode =
+            'summary'
+
+          state.step =
+            'waitingSummaryMonth'
+
+          state.summaryWaitingSince =
+            Date.now()
+
+          await reply(
+            event.replyToken,
+            `📊 สรุปยอดรวม
+
+        กรุณาพิมพ์เดือนที่ต้องการสรุป
+
+        พิมพ์เลขเดือน 01 - 12
+
+        ตัวอย่าง:
+        01 = มกราคม
+
+        ข้อมูลจะรวมของพนักงานทุกคนครับ`
           )
 
           return res.sendStatus(200)
@@ -2165,7 +2235,233 @@ ${messages}
             }
           }
         }
+        // ==================================================
+        // SUMMARY MODE
+        // ==================================================
 
+        if (
+          state.mode === 'summary'
+        ) {
+
+          // ==================================================
+          // SUMMARY MONTH
+          // ==================================================
+
+          if (
+            state.step ===
+            'waitingSummaryMonth'
+          ) {
+
+            const month =
+              text.trim()
+
+            if (
+              !isValidMonth(month)
+            ) {
+              await reply(
+                event.replyToken,
+                '❌ เดือนไม่ถูกต้องครับ\nต้องเป็น 01 ถึง 12 เท่านั้น\nหรือพิมพ์ "ยกเลิก"'
+              )
+
+              return res.sendStatus(200)
+            }
+
+            state.summaryMonth =
+              month
+
+            state.step =
+              'waitingSummaryYear'
+
+            state.summaryWaitingSince =
+              Date.now()
+
+            await reply(
+              event.replyToken,
+              `📅 เดือน ${month}
+
+        กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+
+        ตัวอย่าง:
+        2026
+
+        ข้อมูลจะรวมของพนักงานทุกคนครับ`
+            )
+
+            return res.sendStatus(200)
+          }
+
+          // ==================================================
+          // SUMMARY YEAR
+          // ==================================================
+
+          if (
+            state.step ===
+            'waitingSummaryYear'
+          ) {
+
+            const year =
+              text.trim()
+
+            if (
+              !isValidYear(year)
+            ) {
+              const currentYear =
+                new Date().getFullYear()
+
+              const minYear =
+                currentYear - 5
+
+              await reply(
+                event.replyToken,
+                `❌ ปีไม่ถูกต้องครับ
+
+        ปีต้องอยู่ระหว่าง
+        ${minYear} - ${currentYear}
+
+        กรุณาพิมพ์ปีใหม่อีกครั้ง
+        หรือพิมพ์ "ยกเลิก"`
+              )
+
+              return res.sendStatus(200)
+            }
+
+            const month =
+              state.summaryMonth
+
+            state.summaryYear =
+              year
+
+            state.summaryWaitingSince =
+              Date.now()
+
+            // ==================================================
+            // GET SUMMARY
+            // ==================================================
+
+            try {
+
+              console.log(
+                'SUMMARY REQUEST:',
+                {
+                  month,
+                  year
+                }
+              )
+
+              const summary =
+                await getMonthlySummary(
+                  month,
+                  year
+                )
+
+              console.log(
+                'SUMMARY RESULT:',
+                summary
+              )
+
+              resetState(userId)
+
+              // ==================================================
+              // NO DATA
+              // ==================================================
+
+              if (
+                summary.count === 0
+              ) {
+
+                await reply(
+                  event.replyToken,
+                  `📊 สรุปยอดรวม
+
+        เดือน: ${month}
+        ปี: ${year}
+
+        ❌ ไม่พบข้อมูลในเดือนนี้ครับ
+
+        ลองตรวจสอบเดือน / ปีอีกครั้งครับ
+
+        พิมพ์ "สรุปยอดรวม" เพื่อค้นหาใหม่`
+                )
+
+                return res.sendStatus(200)
+              }
+
+              // ==================================================
+              // FORMAT
+              // ==================================================
+
+              const formatSummaryNumber =
+                value =>
+                  Number(value || 0)
+                    .toLocaleString(
+                      'en-US',
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      }
+                    )
+
+              await reply(
+                event.replyToken,
+                `📊 สรุปยอดรวม
+
+        เดือน: ${month}
+        ปี: ${year}
+
+        จำนวนรายการ: ${summary.count}
+
+        ━━━━━━━━━━━━━━
+
+        👨‍⚕️ Doctor Fee
+        ${formatSummaryNumber(
+          summary.doctorFee
+        )} บาท
+
+        🏥 Hospital & Nursing
+        ${formatSummaryNumber(
+          summary.hospitalNursing
+        )} บาท
+
+        📦 Other
+        ${formatSummaryNumber(
+          summary.other
+        )} บาท
+
+        ━━━━━━━━━━━━━━
+
+        💰 รวมทั้งหมด
+        ${formatSummaryNumber(
+          summary.total
+        )} บาท
+
+        ━━━━━━━━━━━━━━
+
+        ข้อมูลรวมของพนักงานทุกคนครับ
+
+        พิมพ์ "สรุปยอดรวม" เพื่อค้นหาใหม่`
+              )
+
+              return res.sendStatus(200)
+
+            } catch (summaryError) {
+
+              console.error(
+                'SUMMARY ERROR:',
+                summaryError.response?.data ||
+                summaryError.message
+              )
+
+              resetState(userId)
+
+              await reply(
+                event.replyToken,
+                '⚠️ ไม่สามารถคำนวณสรุปยอดได้ครับ\nกรุณาลองใหม่อีกครั้ง'
+              )
+
+              return res.sendStatus(200)
+            }
+          }
+        }
         // ==================================================
         // DEFAULT
         // ==================================================
