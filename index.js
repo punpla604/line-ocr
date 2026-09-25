@@ -492,7 +492,9 @@ async function querySheet(
   // --------------------------------------------------
 
   function rowToObject(row) {
+
     return {
+
       employeeCode:
         getColumn(
           row,
@@ -517,7 +519,9 @@ async function querySheet(
       hn:
         getColumn(
           row,
-          ['hn']
+          [
+            'hn'
+          ]
         ),
 
       name:
@@ -531,10 +535,14 @@ async function querySheet(
           ]
         ),
 
+      // สำคัญ:
+      // Google Sheet ใช้ dateText
       date:
         getColumn(
           row,
           [
+            'datetext',
+            'date text',
             'date',
             'receiptdate',
             'receipt date'
@@ -545,9 +553,21 @@ async function querySheet(
         getColumn(
           row,
           [
+            'datetext',
+            'date text',
             'date',
             'receiptdate',
             'receipt date'
+          ]
+        ),
+
+      time:
+        getColumn(
+          row,
+          [
+            'timetext',
+            'time text',
+            'time'
           ]
         ),
 
@@ -561,10 +581,20 @@ async function querySheet(
           ]
         ),
 
+      vat:
+        getColumn(
+          row,
+          [
+            'vat'
+          ]
+        ),
+
       total:
         getColumn(
           row,
-          ['total']
+          [
+            'total'
+          ]
         ),
 
       doctorFee:
@@ -580,9 +610,10 @@ async function querySheet(
         getColumn(
           row,
           [
+            'hospital&nursing',
+            'hospital & nursing',
             'hospitalnursing',
             'hospital nursing',
-            'hospital & nursing',
             'hospital and nursing service'
           ]
         ),
@@ -590,205 +621,186 @@ async function querySheet(
       other:
         getColumn(
           row,
-          ['other']
+          [
+            'other'
+          ]
         ),
 
-      month:
+      itemJson:
         getColumn(
           row,
-          ['month']
+          [
+            'itemjson',
+            'item json'
+          ]
         ),
 
-      year:
+      raw:
         getColumn(
           row,
-          ['year']
-        )
+          [
+            'raw'
+          ]
+        ),
+
+      month: '',
+      year: ''
     }
   }
-
-  const data =
-    dataRows.map(
-      rowToObject
-    )
-
+  
   // --------------------------------------------------
   // FILTER COMMON
   // --------------------------------------------------
 
   function normalizeText(value) {
+
     return String(value || '')
       .trim()
       .toLowerCase()
   }
 
-  function getRowMonthYear(item) {
-    const rawDate = String(
-      item.date || item.dateText || ''
-    ).trim()
-
-    console.log(
-      'CHECK ROW DATE:',
-      {
-        rawDate,
-        itemMonth: item.month,
-        itemYear: item.year
-      }
-    )
-
-    // --------------------------------------------------
-    // YYYY-MM-DD
-    // --------------------------------------------------
-    let match = rawDate.match(
-      /^(\d{4})-(\d{1,2})-(\d{1,2})$/
-    )
-
-    if (match) {
-      return {
-        year: match[1],
-        month: String(match[2]).padStart(2, '0')
-      }
-    }
-
-    // --------------------------------------------------
-    // DD/MM/YYYY
-    // --------------------------------------------------
-    match = rawDate.match(
-      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
-    )
-
-    if (match) {
-      return {
-        year: match[3],
-        month: String(match[2]).padStart(2, '0')
-      }
-    }
-
-    // --------------------------------------------------
-    // DD Month YYYY
-    // เช่น 31 January 2026
-    // --------------------------------------------------
-    match = rawDate.match(
-      /^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/i
-    )
-
-    if (match) {
-      const months = {
-        january: '01',
-        february: '02',
-        march: '03',
-        april: '04',
-        may: '05',
-        june: '06',
-        july: '07',
-        august: '08',
-        september: '09',
-        october: '10',
-        november: '11',
-        december: '12'
-      }
-
-      const monthNumber =
-        months[
-          match[2].toLowerCase()
-        ]
-
-      if (monthNumber) {
-        return {
-          year: match[3],
-          month: monthNumber
-        }
-      }
-    }
-
-    // --------------------------------------------------
-    // ถ้าอ่านจาก Date ไม่ได้
-    // ใช้ Month / Year จาก Sheet
-    // --------------------------------------------------
-    return {
-      year: String(
-        item.year || ''
-      ).trim(),
-
-      month: String(
-        item.month || ''
-      )
-        .trim()
-        .padStart(2, '0')
-    }
-  }
-
-  // --------------------------------------------------
-  // FILTER
-  // --------------------------------------------------
-
   let filtered = data.filter(item => {
 
-    // --------------------------------------------------
+    // -----------------------------------------------
     // EMPLOYEE
-    // --------------------------------------------------
-
-    const itemEmployee =
-      normalizeText(
-        item.employeeCode
-      )
-
-    const searchEmployee =
-      normalizeText(
-        employeeCode
-      )
+    // -----------------------------------------------
 
     if (
-      searchEmployee &&
-      itemEmployee !== searchEmployee
+      employeeCode &&
+      normalizeText(item.employeeCode) !==
+        normalizeText(employeeCode)
     ) {
       return false
     }
 
-    // --------------------------------------------------
+    // -----------------------------------------------
     // MONTH / YEAR
-    // --------------------------------------------------
+    // -----------------------------------------------
 
-    const rowDate =
-      getRowMonthYear(item)
+    if (month || year) {
 
-    const rowMonth =
-      String(
-        rowDate.month || ''
-      )
-        .trim()
-        .padStart(2, '0')
+      const rowDate =
+        getRowMonthYear(item)
 
-    const rowYear =
-      String(
-        rowDate.year || ''
-      ).trim()
+      if (
+        month &&
+        rowDate.month !==
+          String(month).padStart(2, '0')
+      ) {
+        return false
+      }
 
-    const searchMonth =
-      String(month || '')
-        .trim()
-        .padStart(2, '0')
-
-    const searchYear =
-      String(year || '')
-        .trim()
-
-    if (
-      searchMonth &&
-      rowMonth !== searchMonth
-    ) {
-      return false
-    }
-
-    if (
-      searchYear &&
-      rowYear !== searchYear
-    ) {
-      return false
+      if (
+        year &&
+        rowDate.year !==
+          String(year)
+      ) {
+        return false
+      }
     }
 
     return true
   })
+
+    // --------------------------------------------------
+    // GET MONTH / YEAR FROM DATE
+    // --------------------------------------------------
+
+    function getRowMonthYear(item) {
+
+      const rawDate = String(
+        item.dateText ||
+        item.date ||
+        ''
+      ).trim()
+
+      console.log(
+        'CHECK ROW DATE:',
+        {
+          rawDate,
+          itemMonth: item.month,
+          itemYear: item.year
+        }
+      )
+
+      // -----------------------------------------------
+      // YYYY-MM-DD
+      // -----------------------------------------------
+
+      let match = rawDate.match(
+        /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+      )
+
+      if (match) {
+
+        return {
+          year: match[1],
+          month: String(
+            match[2]
+          ).padStart(2, '0')
+        }
+      }
+
+      // -----------------------------------------------
+      // DD/MM/YYYY
+      // -----------------------------------------------
+
+      match = rawDate.match(
+        /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+      )
+
+      if (match) {
+
+        return {
+          year: match[3],
+          month: String(
+            match[2]
+          ).padStart(2, '0')
+        }
+      }
+
+      // -----------------------------------------------
+      // DD Month YYYY
+      // เช่น
+      // 31 January 2026
+      // -----------------------------------------------
+
+      const parsedDate =
+        new Date(rawDate)
+
+      if (
+        !Number.isNaN(
+          parsedDate.getTime()
+        )
+      ) {
+
+        return {
+          year: String(
+            parsedDate.getFullYear()
+          ),
+
+          month: String(
+            parsedDate.getMonth() + 1
+          ).padStart(2, '0')
+        }
+      }
+
+      // -----------------------------------------------
+      // fallback
+      // -----------------------------------------------
+
+      return {
+        year: String(
+          item.year || ''
+        ).trim(),
+
+        month: String(
+          item.month || ''
+        )
+          .trim()
+          .padStart(2, '0')
+      }
+    }
 
   // --------------------------------------------------
   // DEBUG
