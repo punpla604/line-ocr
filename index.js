@@ -619,14 +619,34 @@ async function querySheet(params = {}) {
       vat:
         getColumn(row, ['vat']),
 
+      amount:
+        getColumn(row, [
+          'amount'
+        ]),
+
+      discount:
+        getColumn(row, [
+          'discount'
+        ]),
+
+      discountByDoctor:
+        getColumn(row, [
+          'discountbydoctor',
+          'discount by doctor',
+          'discount_by_doctor'
+        ]),
+
       total:
-        getColumn(row, ['total']),
+        getColumn(row, [
+          'total'
+        ]),
 
       doctorFee:
         getColumn(row, [
           'doctorfee',
           'doctor fee'
         ]),
+
 
       hospitalNursing:
         getColumn(row, [
@@ -2427,6 +2447,15 @@ ${value}`
 
         parsed.employeeCode =
           state.employeeCode
+          
+        parsed.amount =
+          parsed.amount || ''
+
+        parsed.discount =
+          parsed.discount || ''
+
+        parsed.discountByDoctor =
+          parsed.discountByDoctor || ''
 
         parsed.doctorFee =
           parsed.doctorFee || ''
@@ -2456,6 +2485,12 @@ BN: ${parsed.bn || '-'}
 Date: ${parsed.receiptDateRaw || '-'}
 
 HN: ${parsed.hn || '-'}
+
+Amount: ${formatNumber(parsed.amount)}
+
+Discount: ${formatNumber(parsed.discount)}
+
+Discount by Doctor: ${formatNumber(parsed.discountByDoctor)}
 
 Total: ${formatNumber(parsed.total)}
 

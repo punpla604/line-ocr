@@ -739,15 +739,24 @@ function parseCategoryTotals(items) {
   }
 
   return {
-    doctorFee:
-      doctorFee.toFixed(2),
+  doctorFee:
+    doctorFee.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }),
 
-    hospitalNursing:
-      hospitalNursing.toFixed(2),
+  hospitalNursing:
+    hospitalNursing.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }),
 
-    other:
-      other.toFixed(2)
-  }
+  other:
+    other.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+}
 }
 
 // ==================================================
@@ -816,6 +825,154 @@ function parseVat(lines) {
   }
 
   return ''
+}
+
+// ==================================================
+// Amount / Discount
+// ==================================================
+
+function parseAmountDiscount(lines) {
+  let amount = ''
+  let discount = ''
+  let discountByDoctor = ''
+
+  for (let i = 0; i < lines.length; i++) {
+    const line =
+      normalizeSpaces(lines[i])
+
+    if (!line) {
+      continue
+    }
+
+    // ------------------------------------------
+    // Amount 15,000.00
+    // Amount: 15,000.00
+    // ------------------------------------------
+
+    let match =
+      line.match(
+        /\bamount\b\s*[:.]?\s*(-?\d{1,3}(?:,\d{3})*\.\d{2})/i
+      )
+
+    if (match) {
+      amount =
+        cleanMoney(match[1])
+
+      continue
+    }
+
+    // ------------------------------------------
+    // Discount 500.00
+    // Discount: 500.00
+    // ------------------------------------------
+
+    match =
+      line.match(
+        /\bdiscount\b\s*[:.]?\s*(-?\d{1,3}(?:,\d{3})*\.\d{2})/i
+      )
+
+    if (
+      match &&
+      !/discount\s+by\s+doctor/i.test(line)
+    ) {
+      discount =
+        cleanMoney(match[1])
+
+      continue
+    }
+
+    // ------------------------------------------
+    // Discount by Doctor 1,000.00
+    // ------------------------------------------
+
+    match =
+      line.match(
+        /\bdiscount\s+by\s+doctor\b\s*[:.]?\s*(-?\d{1,3}(?:,\d{3})*\.\d{2})/i
+      )
+
+    if (match) {
+      discountByDoctor =
+        cleanMoney(match[1])
+
+      continue
+    }
+
+    // ------------------------------------------
+    // กรณี OCR แยกชื่อกับตัวเลขคนละบรรทัด
+    //
+    // Amount
+    // 15,000.00
+    //
+    // Discount
+    // 500.00
+    //
+    // Discount by Doctor
+    // 1,000.00
+    // ------------------------------------------
+
+    if (
+      /^amount\s*[:.]?$/i.test(line)
+    ) {
+      const next =
+        normalizeSpaces(
+          lines[i + 1] || ''
+        )
+
+      const money =
+        extractMoney(next)
+
+      if (money) {
+        amount =
+          cleanMoney(money)
+      }
+
+      continue
+    }
+
+    if (
+      /^discount\s*[:.]?$/i.test(line)
+    ) {
+      const next =
+        normalizeSpaces(
+          lines[i + 1] || ''
+        )
+
+      const money =
+        extractMoney(next)
+
+      if (money) {
+        discount =
+          cleanMoney(money)
+      }
+
+      continue
+    }
+
+    if (
+      /^discount\s+by\s+doctor\s*[:.]?$/i.test(line)
+    ) {
+      const next =
+        normalizeSpaces(
+          lines[i + 1] || ''
+        )
+
+      const money =
+        extractMoney(next)
+
+      if (money) {
+        discountByDoctor =
+          cleanMoney(money)
+      }
+
+      continue
+    }
+  }
+
+  return {
+    amount,
+    discount,
+    discountByDoctor
+  }
 }
 
 // ==================================================
@@ -909,12 +1066,16 @@ function parseReceipt(ocrText) {
     parseCategoryTotals(items)
 
   const vat =
-    parseVat(lines)
+  parseVat(lines)
 
-  const total =
-    parseTotal(lines)
+const total =
+  parseTotal(lines)
 
-  return {
+const amountDiscount =
+  parseAmountDiscount(lines)
+
+return {
+
     timestamp:
       new Date().toISOString(),
 
@@ -936,6 +1097,15 @@ function parseReceipt(ocrText) {
     paymentType,
 
     vat,
+    
+    amount:
+      amountDiscount.amount,
+
+    discount:
+      amountDiscount.discount,
+
+    discountByDoctor:
+      amountDiscount.discountByDoctor,
 
     total,
 
@@ -951,6 +1121,8 @@ function parseReceipt(ocrText) {
 
     other:
       categories.other,
+
+      
 
     // ==============================
     // รายการทั้งหมด

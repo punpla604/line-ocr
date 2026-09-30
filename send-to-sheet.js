@@ -98,37 +98,71 @@ function toSheetRow(data) {
 
   return [
 
+    // A
     data.timestamp ||
       new Date().toISOString(),
 
+    // B
     data.employeeCode || '',
 
+    // C
     data.bn ||
       data.receiptNo ||
       '',
 
+    // D
     data.receiptDateRaw || '',
 
+    // E
     data.timeText || '',
 
+    // F
     data.hn || '',
 
+    // G
     data.patientName || '',
 
+    // H
     data.paymentType || '',
 
+    // I
+    VAT
     data.vat || '',
 
+    // J
+    Amount
+    data.amount || '',
+
+    // K
+    Discount
+    data.discount || '',
+
+    // L
+    Discount by Doctor
+    data.discountByDoctor || '',
+
+    // M
+    Total
     data.total || '',
 
+    // N
+    Doctor Fee
     data.doctorFee || '',
 
+    // O
+    Hospital & Nursing
     data.hospitalNursing || '',
 
+    // P
+    Other
     data.other || '',
 
+    // Q
+    Items JSON
     itemsJson,
 
+    // R
+    OCR Raw
     data.raw || ''
 
   ]
@@ -189,7 +223,7 @@ async function sendToSheet(data) {
           SHEET_ID,
 
         range:
-          `${SHEET_NAME}!A:O`,
+          `${SHEET_NAME}!A:R`,
 
         valueInputOption:
           'USER_ENTERED',

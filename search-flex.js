@@ -320,6 +320,77 @@ function buildSearchDetailFlex(
           margin: 'md'
         },
 
+        {
+        type: 'box',
+        layout: 'horizontal',
+        spacing: 'md',
+        contents: [
+            {
+            type: 'text',
+            text: 'Amount',
+            size: 'sm',
+            color: '#777777',
+            flex: 1
+            },
+            {
+            type: 'text',
+            text:
+                `${formatNumber(item.amount)} บาท`,
+            size: 'sm',
+            align: 'end',
+            flex: 2,
+            wrap: true
+            }
+        ]
+        },
+
+        {
+        type: 'box',
+        layout: 'horizontal',
+        spacing: 'md',
+        contents: [
+            {
+            type: 'text',
+            text: 'Discount',
+            size: 'sm',
+            color: '#777777',
+            flex: 1
+            },
+            {
+            type: 'text',
+            text:
+                `${formatNumber(item.discount)} บาท`,
+            size: 'sm',
+            align: 'end',
+            flex: 2,
+            wrap: true
+            }
+        ]
+        },
+
+        {
+        type: 'box',
+        layout: 'horizontal',
+        spacing: 'md',
+        contents: [
+            {
+            type: 'text',
+            text: 'Discount by Doctor',
+            size: 'sm',
+            color: '#777777',
+            flex: 1
+            },
+            {
+            type: 'text',
+            text:
+                `${formatNumber(item.discountByDoctor)} บาท`,
+            size: 'sm',
+            align: 'end',
+            flex: 2,
+            wrap: true
+            }
+        ]
+        },
 
         // TOTAL
 
