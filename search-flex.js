@@ -12,6 +12,19 @@ function safeFlexText(value) {
 
   return text || '-'
 }
+function formatNumber(value) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number)) {
+    return '0'
+  }
+
+  return number.toLocaleString('th-TH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+}
+
 
 // ==================================================
 // SEARCH DETAIL FLEX
