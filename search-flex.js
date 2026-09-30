@@ -13,17 +13,22 @@ function safeFlexText(value) {
   return text || '-'
 }
 function formatNumber(value) {
-  const number = Number(value)
+  const num = Number(
+    String(value ?? '0')
+      .replace(/,/g, '')
+      .trim()
+  )
 
-  if (!Number.isFinite(number)) {
-    return '0'
+  if (isNaN(num)) {
+    return '0.00'
   }
 
-  return number.toLocaleString('th-TH', {
+  return num.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })
 }
+
 
 
 // ==================================================

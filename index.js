@@ -15,6 +15,7 @@ const {
 } = require('./summary')
 
 const {
+  SEARCH_PAGE_SIZE,
   buildEmployeeConfirmFlex,
   buildMonthFlex,
   buildYearFlex,
