@@ -98,76 +98,66 @@ function toSheetRow(data) {
 
   return [
 
-    // A
+    // A - Timestamp
     data.timestamp ||
       new Date().toISOString(),
 
-    // B
+    // B - EmployeeCode
     data.employeeCode || '',
 
-    // C
+    // C - BN
     data.bn ||
       data.receiptNo ||
       '',
 
-    // D
+    // D - DateText
     data.receiptDateRaw || '',
 
-    // E
+    // E - TimeText
     data.timeText || '',
 
-    // F
+    // F - HN
     data.hn || '',
 
-    // G
+    // G - Name
     data.patientName || '',
 
-    // H
+    // H - PaymentType
     data.paymentType || '',
 
-    // I
-    VAT
+    // I - VAT
     data.vat || '',
 
-    // J
-    Amount
+    // J - Amount
     data.amount || '',
 
-    // K
-    Discount
+    // K - Discount
     data.discount || '',
 
-    // L
-    Discount by Doctor
+    // L - Discount by Doctor
     data.discountByDoctor || '',
 
-    // M
-    Total
+    // M - Total
     data.total || '',
 
-    // N
-    Doctor Fee
+    // N - Doctor Fee
     data.doctorFee || '',
 
-    // O
-    Hospital & Nursing
+    // O - Hospital & Nursing
     data.hospitalNursing || '',
 
-    // P
-    Other
+    // P - Other
     data.other || '',
 
-    // Q
-    Items JSON
+    // Q - Items JSON
     itemsJson,
 
-    // R
-    OCR Raw
+    // R - OCR Raw
     data.raw || ''
 
   ]
-
 }
+
 
 // ==================================================
 // SEND TO GOOGLE SHEET
