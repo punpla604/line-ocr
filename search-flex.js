@@ -908,32 +908,19 @@ function buildSearchListFlex(state) {
 
         flex: 1,
 
-        action:
-          canPrevious
+        action: canPrevious
+        ? {
+            type: 'postback',
+            label: '← ก่อนหน้า',
+            data: `search_page:${previousPage}`,
+            displayText: `หน้า ${previousPage}`
+            }
+        : {
+            type: 'postback',
+            label: '← ก่อนหน้า',
+            data: 'search_disabled'
+            }
 
-            ? {
-
-                type: 'postback',
-
-                label: '← ก่อนหน้า',
-
-                data:
-                  `search_page:${previousPage}`,
-
-                displayText:
-                  `หน้า ${previousPage}`
-
-              }
-
-            : {
-
-                type: 'message',
-
-                label: '← ก่อนหน้า',
-
-                text: 'ไม่มีหน้าก่อนหน้า'
-
-              }
       },
 
 
@@ -984,32 +971,19 @@ function buildSearchListFlex(state) {
 
         flex: 1,
 
-        action:
-          canNext
+        action: canNext
+        ? {
+            type: 'postback',
+            label: 'ถัดไป →',
+            data: `search_page:${nextPage}`,
+            displayText: `หน้า ${nextPage}`
+            }
+        : {
+            type: 'postback',
+            label: 'ถัดไป →',
+            data: 'search_disabled'
+            }
 
-            ? {
-
-                type: 'postback',
-
-                label: 'ถัดไป →',
-
-                data:
-                  `search_page:${nextPage}`,
-
-                displayText:
-                  `หน้า ${nextPage}`
-
-              }
-
-            : {
-
-                type: 'message',
-
-                label: 'ถัดไป →',
-
-                text: 'ไม่มีหน้าถัดไป'
-
-              }
       }
 
     ]
