@@ -25,6 +25,21 @@ function buildSummaryFlex(
   const count =
     Number(summary?.count || 0)
 
+  const amount =
+    formatSummaryNumber(
+      summary?.amount
+    )
+
+  const discount =
+    formatSummaryNumber(
+      summary?.discount
+    )
+
+  const discountByDoctor =
+    formatSummaryNumber(
+      summary?.discountByDoctor
+    )
+
   const doctorFee =
     formatSummaryNumber(
       summary?.doctorFee
@@ -140,6 +155,136 @@ function buildSummaryFlex(
               color: '#111111',
 
               align: 'end'
+            }
+
+          ]
+        },
+
+        // ==============================================
+        // AMOUNT
+        // ==============================================
+
+        {
+          type: 'box',
+
+          layout: 'horizontal',
+
+          margin: 'md',
+
+          contents: [
+
+            {
+              type: 'text',
+
+              text: '💵 Amount',
+
+              size: 'sm',
+
+              color: '#555555',
+
+              flex: 1
+            },
+
+            {
+              type: 'text',
+
+              text: `${amount} บาท`,
+
+              size: 'sm',
+
+              weight: 'bold',
+
+              color: '#111111',
+
+              align: 'end'
+            }
+
+          ]
+        },
+
+        // ==============================================
+        // DISCOUNT
+        // ==============================================
+
+        {
+          type: 'box',
+
+          layout: 'horizontal',
+
+          margin: 'md',
+
+          contents: [
+
+            {
+              type: 'text',
+
+              text: '🏷️ Discount',
+
+              size: 'sm',
+
+              color: '#555555',
+
+              flex: 1
+            },
+
+            {
+              type: 'text',
+
+              text: `${discount} บาท`,
+
+              size: 'sm',
+
+              weight: 'bold',
+
+              color: '#DC2626',
+
+              align: 'end'
+            }
+
+          ]
+        },
+
+        // ==============================================
+        // DISCOUNT BY DOCTOR
+        // ==============================================
+
+        {
+          type: 'box',
+
+          layout: 'horizontal',
+
+          margin: 'md',
+
+          contents: [
+
+            {
+              type: 'text',
+
+              text: '👨‍⚕️ Discount by Doctor',
+
+              size: 'sm',
+
+              color: '#555555',
+
+              flex: 1,
+
+              wrap: true
+            },
+
+            {
+              type: 'text',
+
+              text: `${discountByDoctor} บาท`,
+
+              size: 'sm',
+
+              weight: 'bold',
+
+              color: '#DC2626',
+
+              align: 'end',
+
+              flex: 1
             }
 
           ]

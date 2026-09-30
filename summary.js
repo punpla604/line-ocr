@@ -35,9 +35,11 @@ function getSheetsClient() {
     credentials: {
       client_email:
         GOOGLE_SERVICE_ACCOUNT_EMAIL,
+
       private_key:
         GOOGLE_PRIVATE_KEY
     },
+
     scopes: [
       'https://www.googleapis.com/auth/spreadsheets'
     ]
@@ -89,7 +91,10 @@ function getMonthYearFromDate(rawDate) {
     return null
   }
 
+  // ==================================================
   // YYYY-MM-DD
+  // ==================================================
+
   let match = text.match(
     /^(\d{4})-(\d{1,2})-(\d{1,2})$/
   )
@@ -97,11 +102,17 @@ function getMonthYearFromDate(rawDate) {
   if (match) {
     return {
       year: match[1],
-      month: String(match[2]).padStart(2, '0')
+
+      month:
+        String(match[2])
+          .padStart(2, '0')
     }
   }
 
+  // ==================================================
   // DD/MM/YYYY
+  // ==================================================
+
   match = text.match(
     /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
   )
@@ -109,13 +120,20 @@ function getMonthYearFromDate(rawDate) {
   if (match) {
     return {
       year: match[3],
-      month: String(match[2]).padStart(2, '0')
+
+      month:
+        String(match[2])
+          .padStart(2, '0')
     }
   }
 
+  // ==================================================
   // DD Month YYYY
   // เช่น 31 January 2026
-  const parsedDate = new Date(text)
+  // ==================================================
+
+  const parsedDate =
+    new Date(text)
 
   if (
     !Number.isNaN(
@@ -123,12 +141,15 @@ function getMonthYearFromDate(rawDate) {
     )
   ) {
     return {
-      year: String(
-        parsedDate.getFullYear()
-      ),
-      month: String(
-        parsedDate.getMonth() + 1
-      ).padStart(2, '0')
+      year:
+        String(
+          parsedDate.getFullYear()
+        ),
+
+      month:
+        String(
+          parsedDate.getMonth() + 1
+        ).padStart(2, '0')
     }
   }
 
@@ -143,6 +164,7 @@ async function getMonthlySummary(
   month,
   year
 ) {
+
   const sheets =
     getSheetsClient()
 
@@ -163,13 +185,21 @@ async function getMonthlySummary(
     response.data.values || []
 
   if (rows.length <= 1) {
+
     return {
       month,
       year,
+
       count: 0,
+
+      amount: 0,
+      discount: 0,
+      discountByDoctor: 0,
+
       doctorFee: 0,
       hospitalNursing: 0,
       other: 0,
+
       total: 0
     }
   }
@@ -188,13 +218,20 @@ async function getMonthlySummary(
   function getColumnIndex(
     possibleNames
   ) {
+
     for (
       const name
       of possibleNames
     ) {
+
+      const normalizedName =
+        String(name)
+          .trim()
+          .toLowerCase()
+
       const index =
         headers.indexOf(
-          name.toLowerCase()
+          normalizedName
         )
 
       if (index !== -1) {
@@ -205,6 +242,10 @@ async function getMonthlySummary(
     return -1
   }
 
+  // ==================================================
+  // COLUMN INDEX
+  // ==================================================
+
   const dateIndex =
     getColumnIndex([
       'datetext',
@@ -212,6 +253,23 @@ async function getMonthlySummary(
       'date',
       'receiptdate',
       'receipt date'
+    ])
+
+  const amountIndex =
+    getColumnIndex([
+      'amount'
+    ])
+
+  const discountIndex =
+    getColumnIndex([
+      'discount'
+    ])
+
+  const discountByDoctorIndex =
+    getColumnIndex([
+      'discountbydoctor',
+      'discount by doctor',
+      'discount_by_doctor'
     ])
 
   const doctorFeeIndex =
@@ -233,17 +291,31 @@ async function getMonthlySummary(
       'other'
     ])
 
+  const totalIndex =
+    getColumnIndex([
+      'total'
+    ])
+
   console.log(
     'SUMMARY COLUMN INDEX:',
     {
       dateIndex,
+      amountIndex,
+      discountIndex,
+      discountByDoctorIndex,
       doctorFeeIndex,
       hospitalNursingIndex,
-      otherIndex
+      otherIndex,
+      totalIndex
     }
   )
 
+  // ==================================================
+  // DATE COLUMN REQUIRED
+  // ==================================================
+
   if (dateIndex === -1) {
+
     throw new Error(
       'ไม่พบ column dateText ใน Sheet1'
     )
@@ -255,13 +327,24 @@ async function getMonthlySummary(
 
   let count = 0
 
+  let amount = 0
+  let discount = 0
+  let discountByDoctor = 0
+
   let doctorFee = 0
   let hospitalNursing = 0
   let other = 0
 
+  let total = 0
+
+  // ==================================================
+  // LOOP
+  // ==================================================
+
   for (
     const row of rows.slice(1)
   ) {
+
     const rawDate =
       row[dateIndex] || ''
 
@@ -274,12 +357,21 @@ async function getMonthlySummary(
       continue
     }
 
+    // ------------------------------------------------
+    // MONTH
+    // ------------------------------------------------
+
     if (
       dateInfo.month !==
-      String(month).padStart(2, '0')
+      String(month)
+        .padStart(2, '0')
     ) {
       continue
     }
+
+    // ------------------------------------------------
+    // YEAR
+    // ------------------------------------------------
 
     if (
       dateInfo.year !==
@@ -290,52 +382,183 @@ async function getMonthlySummary(
 
     count++
 
-    doctorFee +=
-      toNumber(
-        row[doctorFeeIndex]
-      )
+    // ------------------------------------------------
+    // AMOUNT
+    // ------------------------------------------------
 
-    hospitalNursing +=
-      toNumber(
-        row[
-          hospitalNursingIndex
-        ]
-      )
+    if (
+      amountIndex !== -1
+    ) {
 
-    other +=
-      toNumber(
-        row[otherIndex]
-      )
+      amount +=
+        toNumber(
+          row[amountIndex]
+        )
+    }
+
+    // ------------------------------------------------
+    // DISCOUNT
+    // ------------------------------------------------
+
+    if (
+      discountIndex !== -1
+    ) {
+
+      discount +=
+        toNumber(
+          row[discountIndex]
+        )
+    }
+
+    // ------------------------------------------------
+    // DISCOUNT BY DOCTOR
+    // ------------------------------------------------
+
+    if (
+      discountByDoctorIndex !== -1
+    ) {
+
+      discountByDoctor +=
+        toNumber(
+          row[
+            discountByDoctorIndex
+          ]
+        )
+    }
+
+    // ------------------------------------------------
+    // DOCTOR FEE
+    // ------------------------------------------------
+
+    if (
+      doctorFeeIndex !== -1
+    ) {
+
+      doctorFee +=
+        toNumber(
+          row[doctorFeeIndex]
+        )
+    }
+
+    // ------------------------------------------------
+    // HOSPITAL & NURSING
+    // ------------------------------------------------
+
+    if (
+      hospitalNursingIndex !== -1
+    ) {
+
+      hospitalNursing +=
+        toNumber(
+          row[
+            hospitalNursingIndex
+          ]
+        )
+    }
+
+    // ------------------------------------------------
+    // OTHER
+    // ------------------------------------------------
+
+    if (
+      otherIndex !== -1
+    ) {
+
+      other +=
+        toNumber(
+          row[otherIndex]
+        )
+    }
+
+    // ------------------------------------------------
+    // TOTAL
+    // ------------------------------------------------
+
+    if (
+      totalIndex !== -1
+    ) {
+
+      total +=
+        toNumber(
+          row[totalIndex]
+        )
+    }
   }
 
-  const total =
-    doctorFee +
-    hospitalNursing +
-    other
+  // ==================================================
+  // FALLBACK TOTAL
+  // ==================================================
+  //
+  // ถ้า Sheet ยังไม่มี column Total
+  // ใช้ Doctor Fee + Hospital & Nursing + Other
+  // เป็น fallback
+  //
+  // ==================================================
+
+  if (
+    totalIndex === -1
+  ) {
+
+    total =
+      doctorFee +
+      hospitalNursing +
+      other
+  }
+
+  // ==================================================
+  // LOG
+  // ==================================================
 
   console.log(
     'MONTHLY SUMMARY:',
     {
       month,
       year,
+
       count,
+
+      amount,
+      discount,
+      discountByDoctor,
+
       doctorFee,
       hospitalNursing,
       other,
+
       total
     }
   )
 
+  // ==================================================
+  // RETURN
+  // ==================================================
+
   return {
+
     month,
     year,
+
     count,
+
+    amount,
+
+    discount,
+
+    discountByDoctor,
+
     doctorFee,
+
     hospitalNursing,
+
     other,
+
     total
   }
 }
+
+// ==================================================
+// EXPORT
+// ==================================================
 
 module.exports = {
   getMonthlySummary
