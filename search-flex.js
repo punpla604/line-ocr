@@ -837,23 +837,28 @@ function buildMonthFlex(mode = 'search') {
 
   const rows = []
 
+  // ใช้ 2 เดือนต่อแถว
   for (
     let i = 0;
     i < months.length;
-    i += 3
+    i += 2
   ) {
 
     const rowItems =
       months
-        .slice(i, i + 3)
+        .slice(i, i + 2)
         .map(([value, label]) => ({
+
           type: 'button',
 
           style: 'secondary',
 
           height: 'sm',
 
+          flex: 1,
+
           action: {
+
             type: 'postback',
 
             label:
@@ -868,6 +873,7 @@ function buildMonthFlex(mode = 'search') {
         }))
 
     rows.push({
+
       type: 'box',
 
       layout: 'horizontal',
@@ -880,11 +886,13 @@ function buildMonthFlex(mode = 'search') {
   }
 
   return {
+
     type: 'bubble',
 
     size: 'mega',
 
     body: {
+
       type: 'box',
 
       layout: 'vertical',
