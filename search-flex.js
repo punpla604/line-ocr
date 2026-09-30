@@ -1137,6 +1137,7 @@ function buildSearchTypeFlex() {
 // ==================================================
 
 module.exports = {
+  SEARCH_PAGE_SIZE,
   buildEmployeeConfirmFlex,
   buildMonthFlex,
   buildYearFlex,
