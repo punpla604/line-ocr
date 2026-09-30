@@ -693,32 +693,71 @@ async function findByDate({
     )
   }
 
-  const searchDate =
-    toDateShort(date)
+  // ==================================================
+  // รับเฉพาะ "วันที่" เช่น 01, 15, 31
+  // เดือนและปีมาจาก search_month / search_year
+  // ==================================================
 
-  if (!searchDate) {
+  const day =
+    String(date)
+      .trim()
+      .padStart(2, '0')
+
+  if (
+    !/^(0[1-9]|[12]\d|3[01])$/.test(day)
+  ) {
     throw new Error(
-      'Invalid date format. Use DD/MM/YYYY'
+      'Invalid date. Use DD only, for example 01'
     )
   }
+
+  const targetMonth =
+    String(month)
+      .padStart(2, '0')
+
+  const targetYear =
+    String(year)
+
+  // ==================================================
+  // ดึงข้อมูลเฉพาะเดือน/ปีที่เลือก
+  // ==================================================
 
   const filteredRows =
     await getFilteredRows(
       employeeCode,
-      month,
-      year
+      targetMonth,
+      targetYear
     )
+
+  // ==================================================
+  // เทียบเฉพาะ "วัน"
+  // ==================================================
 
   const matchedRows =
     filteredRows.filter(
       function (r) {
 
-        return (
+        const rowDate =
           toDateShort(
             r.dateText
-          ) === searchDate
-        )
+          )
 
+        if (!rowDate) {
+          return false
+        }
+
+        const parts =
+          rowDate.split('/')
+
+        if (parts.length !== 3) {
+          return false
+        }
+
+        const rowDay =
+          String(parts[0])
+            .padStart(2, '0')
+
+        return rowDay === day
       }
     )
 
@@ -738,7 +777,7 @@ async function findByDate({
       matchedRows.length,
 
     date:
-      searchDate,
+      `${day}/${targetMonth}/${targetYear}`,
 
     list
 
@@ -763,32 +802,70 @@ async function countByDateReceipt({
     )
   }
 
-  const searchDate =
-    toDateShort(date)
+  // ==================================================
+  // รับเฉพาะวันที่ เช่น 01
+  // ==================================================
 
-  if (!searchDate) {
+  const day =
+    String(date)
+      .trim()
+      .padStart(2, '0')
+
+  if (
+    !/^(0[1-9]|[12]\d|3[01])$/.test(day)
+  ) {
     throw new Error(
-      'Invalid date format. Use DD/MM/YYYY'
+      'Invalid date. Use DD only, for example 01'
     )
   }
+
+  const targetMonth =
+    String(month)
+      .padStart(2, '0')
+
+  const targetYear =
+    String(year)
+
+  // ==================================================
+  // ดึงข้อมูลเดือน/ปี
+  // ==================================================
 
   const filteredRows =
     await getFilteredRows(
       employeeCode,
-      month,
-      year
+      targetMonth,
+      targetYear
     )
+
+  // ==================================================
+  // เทียบเฉพาะวัน
+  // ==================================================
 
   const matchedRows =
     filteredRows.filter(
       function (r) {
 
-        return (
+        const rowDate =
           toDateShort(
             r.dateText
-          ) === searchDate
-        )
+          )
 
+        if (!rowDate) {
+          return false
+        }
+
+        const parts =
+          rowDate.split('/')
+
+        if (parts.length !== 3) {
+          return false
+        }
+
+        const rowDay =
+          String(parts[0])
+            .padStart(2, '0')
+
+        return rowDay === day
       }
     )
 
@@ -803,7 +880,7 @@ async function countByDateReceipt({
       matchedRows.length,
 
     date:
-      searchDate
+      `${day}/${targetMonth}/${targetYear}`
 
   }
 }

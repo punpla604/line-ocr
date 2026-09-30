@@ -257,36 +257,40 @@ function getYearRangeText() {
   } - ${currentYear}`
 }
 
-function isValidDate(text) {
-  const regex =
-    /^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/
+function isValidSearchDay(text, month, year) {
+  const dayText =
+    String(text || '').trim()
 
-  if (!regex.test(text)) {
+  if (!/^\d{1,2}$/.test(dayText)) {
     return false
   }
 
-  const [
-    day,
-    month,
-    year
-  ] =
-    text
-      .split('/')
-      .map(Number)
+  const day =
+    Number(dayText)
+
+  if (day < 1 || day > 31) {
+    return false
+  }
+
+  const monthNum =
+    Number(month)
+
+  const yearNum =
+    Number(year)
 
   const date =
     new Date(
-      year,
-      month - 1,
-      day
+      yearNum,
+      monthNum,
+      0
     )
 
-  return (
-    date.getFullYear() === year &&
-    date.getMonth() === month - 1 &&
-    date.getDate() === day
-  )
+  const daysInMonth =
+    date.getDate()
+
+  return day <= daysInMonth
 }
+
 
 // ==================================================
 // LINE REPLY
@@ -1149,7 +1153,7 @@ app.post(
             searchType === 'DATE'
           ) {
             hint =
-              'พิมพ์วันที่ DD/MM/YYYY เช่น 11/02/2026'
+              'พิมพ์วันที่ DD เช่น 02'
           }
 
           await reply(
@@ -1951,7 +1955,7 @@ ${hint}
 
             if (type === 'DATE') {
               hint =
-                'พิมพ์วันที่ DD/MM/YYYY เช่น 11/02/2026'
+                'พิมพ์วันที่ DD เช่น 02'
             }
 
             await reply(
@@ -1995,48 +1999,30 @@ ${hint}
             ) {
 
               if (
-                !isValidDate(value)
-              ) {
-
-                await reply(
-                  event.replyToken,
-
-                  '❌ รูปแบบวันที่ไม่ถูกต้องครับ\nต้องเป็น DD/MM/YYYY\nตัวอย่าง 11/02/2026'
-                )
-
-                return res.sendStatus(200)
-              }
-
-              const [
-                ,
-                dateMonth,
-                dateYear
-              ] =
-                value.split('/')
-
-              if (
-                dateMonth !==
-                  state.searchMonth ||
-                dateYear !==
+                !isValidSearchDay(
+                  value,
+                  state.searchMonth,
                   state.searchYear
+                )
               ) {
 
                 await reply(
                   event.replyToken,
 
-                  `❌ วันที่ไม่ตรงกับช่วงที่เลือกครับ
+                  `❌ วันที่ไม่ถูกต้องครับ
 
-คุณเลือก:
-เดือน ${state.searchMonth}
-ปี ${state.searchYear}
+            คุณเลือก:
+            เดือน ${state.searchMonth}
+            ปี ${state.searchYear}
 
-แต่วันที่ที่พิมพ์คือ:
-${value}`
+            กรุณาพิมพ์เฉพาะวันที่ เช่น
+            01`
                 )
 
                 return res.sendStatus(200)
               }
             }
+
 
             const baseParams = {
               employeeCode:
@@ -2088,11 +2074,14 @@ ${value}`
               state.searchType === 'DATE'
             ) {
 
+              const searchDate =
+                `${value.padStart(2, '0')}/${state.searchMonth}/${state.searchYear}`
+
               result =
                 await querySheet({
                   action: 'findByDate',
                   ...baseParams,
-                  date: value
+                  date: searchDate
                 })
             }
 
