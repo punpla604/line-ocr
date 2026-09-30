@@ -14,6 +14,16 @@ const {
   getMonthlySummary
 } = require('./summary')
 
+const {
+  buildEmployeeConfirmFlex,
+  buildMonthFlex,
+  buildYearFlex,
+  buildSearchTypeFlex,
+  buildSearchListFlex,
+  buildSearchDetailFlex
+} = require('./search-flex')
+
+
 const SUMMARY_PASSWORD =
   String(
     process.env.SUMMARY_PASSWORD || ''
@@ -365,714 +375,9 @@ async function replyFlex(
     }
   )
 }
+  
 
-// ==================================================
-// SEARCH FLEX MESSAGE
-// ==================================================
-
-const SEARCH_PAGE_SIZE = 10
-
-function safeFlexText(value) {
-  const text =
-    String(value ?? '-')
-      .trim()
-
-  return text || '-'
-}
-
-// ==================================================
-// SEARCH DETAIL FLEX
-// ==================================================
-
-function buildSearchDetailFlex(
-  item,
-  index,
-  page
-) {
-
-  return {
-    type: 'bubble',
-    size: 'mega',
-
-    header: {
-      type: 'box',
-      layout: 'vertical',
-      backgroundColor: '#1976D2',
-      paddingAll: '18px',
-
-      contents: [
-        {
-          type: 'text',
-          text: '🧾 รายละเอียดเอกสาร',
-          color: '#FFFFFF',
-          size: 'lg',
-          weight: 'bold'
-        },
-
-        {
-          type: 'text',
-          text: `รายการที่ ${index + 1}`,
-          color: '#E3F2FD',
-          size: 'sm',
-          margin: 'sm'
-        }
-      ]
-    },
-
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'md',
-      paddingAll: '18px',
-
-      contents: [
-
-        {
-          type: 'text',
-          text:
-            `BN: ${safeFlexText(item.bn)}`,
-          size: 'md',
-          weight: 'bold',
-          wrap: true
-        },
-
-        {
-          type: 'separator',
-          margin: 'sm'
-        },
-
-        {
-          type: 'box',
-          layout: 'horizontal',
-          spacing: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: 'วันที่',
-              size: 'sm',
-              color: '#777777',
-              flex: 1
-            },
-            {
-              type: 'text',
-              text:
-                safeFlexText(
-                  item.dateText ||
-                  item.date
-                ),
-              size: 'sm',
-              align: 'end',
-              flex: 2,
-              wrap: true
-            }
-          ]
-        },
-
-        {
-          type: 'box',
-          layout: 'horizontal',
-          spacing: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: 'HN',
-              size: 'sm',
-              color: '#777777',
-              flex: 1
-            },
-            {
-              type: 'text',
-              text:
-                safeFlexText(item.hn),
-              size: 'sm',
-              align: 'end',
-              flex: 2,
-              wrap: true
-            }
-          ]
-        },
-
-        {
-          type: 'box',
-          layout: 'horizontal',
-          spacing: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: 'ชื่อ',
-              size: 'sm',
-              color: '#777777',
-              flex: 1
-            },
-            {
-              type: 'text',
-              text:
-                safeFlexText(item.name),
-              size: 'sm',
-              align: 'end',
-              flex: 2,
-              wrap: true
-            }
-          ]
-        },
-
-        {
-          type: 'box',
-          layout: 'horizontal',
-          spacing: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: 'การชำระเงิน',
-              size: 'sm',
-              color: '#777777',
-              flex: 1
-            },
-            {
-              type: 'text',
-              text:
-                safeFlexText(
-                  item.paymentType
-                ),
-              size: 'sm',
-              align: 'end',
-              flex: 2,
-              wrap: true
-            }
-          ]
-        },
-
-        {
-          type: 'separator',
-          margin: 'md'
-        },
-
-        {
-          type: 'box',
-          layout: 'horizontal',
-          spacing: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: 'ยอดรวม',
-              size: 'md',
-              weight: 'bold',
-              color: '#333333',
-              flex: 1
-            },
-            {
-              type: 'text',
-              text:
-                `${formatNumber(item.total)} บาท`,
-              size: 'md',
-              weight: 'bold',
-              color: '#1976D2',
-              align: 'end',
-              flex: 2,
-              wrap: true
-            }
-          ]
-        },
-
-        {
-          type: 'box',
-          layout: 'horizontal',
-          spacing: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: 'Doctor Fee',
-              size: 'sm',
-              color: '#777777',
-              flex: 1
-            },
-            {
-              type: 'text',
-              text:
-                `${formatNumber(item.doctorFee)} บาท`,
-              size: 'sm',
-              align: 'end',
-              flex: 2
-            }
-          ]
-        },
-
-        {
-          type: 'box',
-          layout: 'horizontal',
-          spacing: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: 'Hospital & Nursing',
-              size: 'sm',
-              color: '#777777',
-              flex: 1
-            },
-            {
-              type: 'text',
-              text:
-                `${formatNumber(
-                  item.hospitalNursing
-                )} บาท`,
-              size: 'sm',
-              align: 'end',
-              flex: 2,
-              wrap: true
-            }
-          ]
-        },
-
-        {
-          type: 'box',
-          layout: 'horizontal',
-          spacing: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: 'Other',
-              size: 'sm',
-              color: '#777777',
-              flex: 1
-            },
-            {
-              type: 'text',
-              text:
-                `${formatNumber(item.other)} บาท`,
-              size: 'sm',
-              align: 'end',
-              flex: 2
-            }
-          ]
-        }
-      ]
-    },
-
-    footer: {
-      type: 'box',
-      layout: 'horizontal',
-      spacing: 'sm',
-      paddingAll: '12px',
-
-      contents: [
-
-        {
-          type: 'button',
-          style: 'secondary',
-          height: 'sm',
-
-          action: {
-            type: 'postback',
-            label: '← กลับรายการ',
-
-            data:
-              `search_page:${page}`
-          }
-        }
-
-      ]
-    }
-  }
-}
-
-// ==================================================
-// SEARCH LIST FLEX
-// ==================================================
-
-function buildSearchListFlex(
-  state
-) {
-
-  const allResults =
-    Array.isArray(
-      state.searchResults
-    )
-      ? state.searchResults
-      : []
-
-  const total =
-    allResults.length
-
-  const totalPages =
-    Math.max(
-      1,
-      Math.ceil(
-        total /
-        SEARCH_PAGE_SIZE
-      )
-    )
-
-  let page =
-    Number(
-      state.searchPage || 1
-    )
-
-  if (page < 1) {
-    page = 1
-  }
-
-  if (page > totalPages) {
-    page = totalPages
-  }
-
-  state.searchPage =
-    page
-
-  const startIndex =
-    (page - 1) *
-    SEARCH_PAGE_SIZE
-
-  const endIndex =
-    Math.min(
-      startIndex +
-        SEARCH_PAGE_SIZE,
-      total
-    )
-
-  const pageItems =
-    allResults.slice(
-      startIndex,
-      endIndex
-    )
-
-  // ==================================================
-  // ROWS
-  // ==================================================
-
-  const rows = []
-
-  pageItems.forEach(
-    (item, index) => {
-
-      const realIndex =
-        startIndex +
-        index
-
-      const date =
-        item.dateText ||
-        item.date ||
-        '-'
-
-      const bn =
-        item.bn ||
-        '-'
-
-      const totalText =
-        formatNumber(
-          item.total
-        )
-
-      rows.push({
-
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'xs',
-        paddingTop: '10px',
-        paddingBottom: '10px',
-
-        contents: [
-
-          {
-            type: 'box',
-            layout: 'horizontal',
-            spacing: 'sm',
-
-            contents: [
-
-              {
-                type: 'text',
-                text:
-                  `${realIndex + 1}.`,
-                size: 'sm',
-                weight: 'bold',
-                color: '#333333',
-                flex: 0
-              },
-
-              {
-                type: 'text',
-                text:
-                  safeFlexText(date),
-                size: 'sm',
-                color: '#333333',
-                flex: 1,
-                wrap: true
-              },
-
-              {
-                type: 'text',
-                text:
-                  `${totalText} บาท`,
-                size: 'sm',
-                weight: 'bold',
-                color: '#1976D2',
-                align: 'end',
-                flex: 0,
-                wrap: true
-              }
-
-            ]
-          },
-
-          {
-            type: 'box',
-            layout: 'horizontal',
-            margin: 'xs',
-            spacing: 'sm',
-
-            contents: [
-
-              {
-                type: 'text',
-                text:
-                  `BN: ${safeFlexText(bn)}`,
-                size: 'xs',
-                color: '#777777',
-                flex: 1,
-                wrap: true
-              },
-
-              {
-                type: 'button',
-                style: 'secondary',
-                height: 'sm',
-                flex: 0,
-
-                action: {
-                  type: 'postback',
-                  label: 'ดูข้อมูล',
-
-                  data:
-                    `search_detail:${realIndex}`
-                }
-              }
-
-            ]
-          },
-
-          {
-            type: 'separator',
-            margin: 'sm'
-          }
-
-        ]
-      })
-
-    }
-  )
-
-  // ==================================================
-  // HEADER
-  // ==================================================
-
-  const headerContents = [
-
-    {
-      type: 'text',
-      text: '📄 รายการเอกสาร',
-      size: 'xl',
-      weight: 'bold',
-      color: '#FFFFFF'
-    },
-
-    {
-      type: 'text',
-      text:
-        total === 0
-          ? 'ไม่พบข้อมูล'
-          : `แสดง ${startIndex + 1}-${endIndex} จาก ${total} รายการ`,
-      size: 'sm',
-      color: '#E3F2FD',
-      margin: 'sm'
-    },
-
-    {
-      type: 'text',
-      text:
-        `หน้า ${page}/${totalPages}`,
-      size: 'sm',
-      color: '#FFFFFF',
-      margin: 'xs'
-    }
-
-  ]
-
-  // ==================================================
-  // NAVIGATION
-  // ==================================================
-
-  const previousPage =
-    page - 1
-
-  const nextPage =
-    page + 1
-
-  const canPrevious =
-    page > 1
-
-  const canNext =
-    page < totalPages
-
-  const navigation = {
-
-    type: 'box',
-    layout: 'horizontal',
-    spacing: 'sm',
-
-    contents: [
-
-      {
-        type: 'button',
-
-        style:
-          canPrevious
-            ? 'secondary'
-            : 'secondary',
-
-        color:
-          canPrevious
-            ? '#1976D2'
-            : '#BDBDBD',
-
-        height: 'sm',
-
-        action: {
-          type: 'postback',
-
-          label: 'ก่อนหน้า',
-
-          data:
-            canPrevious
-              ? `search_page:${previousPage}`
-              : 'search_noop'
-        }
-      },
-
-      {
-        type: 'button',
-
-        style: 'primary',
-        color: '#1976D2',
-        height: 'sm',
-
-        action: {
-          type: 'postback',
-
-          label:
-            `${page}/${totalPages}`,
-
-          data:
-            'search_noop'
-        }
-      },
-
-      {
-        type: 'button',
-
-        style: 'secondary',
-
-        color:
-          canNext
-            ? '#1976D2'
-            : '#BDBDBD',
-
-        height: 'sm',
-
-        action: {
-          type: 'postback',
-
-          label: 'ถัดไป',
-
-          data:
-            canNext
-              ? `search_page:${nextPage}`
-              : 'search_noop'
-        }
-      }
-
-    ]
-  }
-
-  // ==================================================
-  // RETURN FLEX
-  // ==================================================
-
-  return {
-
-    type: 'bubble',
-
-    size: 'mega',
-
-    header: {
-      type: 'box',
-      layout: 'vertical',
-      backgroundColor: '#1976D2',
-      paddingAll: '18px',
-
-      contents:
-        headerContents
-    },
-
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'none',
-      paddingAll: '14px',
-
-      contents:
-        rows.length > 0
-          ? rows
-          : [
-              {
-                type: 'text',
-                text:
-                  '❌ ไม่พบข้อมูลครับ',
-                align: 'center',
-                color: '#777777',
-                margin: 'lg'
-              }
-            ]
-    },
-
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'sm',
-      paddingAll: '12px',
-
-      contents: [
-        navigation,
-
-        {
-          type: 'text',
-          text:
-            `👤 Employee: ${safeFlexText(
-              state.employeeCode
-            )}`,
-
-          size: 'xs',
-          color: '#888888',
-          align: 'center',
-          margin: 'sm'
-        },
-
-        {
-          type: 'text',
-          text:
-            `📅 ${safeFlexText(
-              state.searchMonth
-            )}/${safeFlexText(
-              state.searchYear
-            )}`,
-
-          size: 'xs',
-          color: '#888888',
-          align: 'center'
-        }
-      ]
-    }
-  }
-}
+ 
 
 // ==================================================
 // SHOW SEARCH RESULTS
@@ -1955,6 +1260,241 @@ app.post(
         ) {
           return res.sendStatus(200)
         }
+        // ==================================================
+        // SEARCH CHOOSE MONTH
+        // ==================================================
+
+        if (
+          data === 'search_choose_month'
+        ) {
+
+          if (
+            state.mode !== 'search'
+          ) {
+
+            await reply(
+              event.replyToken,
+              '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
+            )
+
+            return res.sendStatus(200)
+          }
+
+          state.step =
+            'waitingSearchMonth'
+
+          state.searchWaitingSince =
+            Date.now()
+
+          await replyFlex(
+            event.replyToken,
+
+            '📅 กรุณาเลือกเดือน',
+
+            buildMonthFlex()
+          )
+
+          return res.sendStatus(200)
+        }
+
+        // ==================================================
+        // SEARCH MONTH
+        // ==================================================
+
+        if (
+          data.startsWith(
+            'search_month:'
+          )
+        ) {
+
+          if (
+            state.mode !== 'search'
+          ) {
+
+            await reply(
+              event.replyToken,
+              '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
+            )
+
+            return res.sendStatus(200)
+          }
+
+          const month =
+            data.split(':')[1]
+
+          if (
+            !isValidMonth(month)
+          ) {
+            return res.sendStatus(200)
+          }
+
+          state.searchMonth =
+            month
+
+          state.step =
+            'waitingSearchYear'
+
+          state.searchWaitingSince =
+            Date.now()
+
+          await replyFlex(
+            event.replyToken,
+
+            `📅 เดือน ${month}\nกรุณาเลือกปี`,
+
+            buildYearFlex()
+          )
+
+          return res.sendStatus(200)
+        }
+        
+        // ==================================================
+        // SEARCH YEAR
+        // ==================================================
+
+        if (
+          data.startsWith(
+            'search_year:'
+          )
+        ) {
+
+          if (
+            state.mode !== 'search'
+          ) {
+
+            await reply(
+              event.replyToken,
+              '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
+            )
+
+            return res.sendStatus(200)
+          }
+
+          const year =
+            data.split(':')[1]
+
+          if (
+            !isValidYear(year)
+          ) {
+            return res.sendStatus(200)
+          }
+
+          state.searchYear =
+            year
+
+          state.step =
+            'chooseSearchType'
+
+          state.searchWaitingSince =
+            Date.now()
+
+          await replyFlex(
+            event.replyToken,
+
+            `📅 ${state.searchMonth}/${state.searchYear}\nเลือกประเภทการค้นหา`,
+
+            buildSearchTypeFlex()
+          )
+
+          return res.sendStatus(200)
+        }
+        
+        // ==================================================
+        // SEARCH TYPE
+        // ==================================================
+
+        if (
+          data.startsWith(
+            'search_type:'
+          )
+        ) {
+
+          if (
+            state.mode !== 'search'
+          ) {
+
+            await reply(
+              event.replyToken,
+              '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
+            )
+
+            return res.sendStatus(200)
+          }
+
+          const searchType =
+            data.split(':')[1]
+
+          const allowedTypes = [
+            'BN',
+            'HN',
+            'NAME',
+            'DATE'
+          ]
+
+          if (
+            !allowedTypes.includes(
+              searchType
+            )
+          ) {
+            return res.sendStatus(200)
+          }
+
+          state.searchType =
+            searchType
+
+          state.step =
+            'waitingSearchValue'
+
+          state.searchWaitingSince =
+            Date.now()
+
+          let hint = ''
+
+          if (
+            searchType === 'BN'
+          ) {
+            hint =
+              'พิมพ์เลข BN เช่น L69-01-003-761'
+          }
+
+          if (
+            searchType === 'HN'
+          ) {
+            hint =
+              'พิมพ์เลข HN เช่น 01-01-26-047'
+          }
+
+          if (
+            searchType === 'NAME'
+          ) {
+            hint =
+              'พิมพ์ชื่อคนไข้'
+          }
+
+          if (
+            searchType === 'DATE'
+          ) {
+            hint =
+              'พิมพ์วันที่ DD/MM/YYYY เช่น 11/02/2026'
+          }
+
+          await reply(
+            event.replyToken,
+
+            `🔎 ประเภท: ${searchType}
+
+        👤 Employee: ${state.employeeCode}
+
+        📅 เดือน: ${state.searchMonth}
+        📅 ปี: ${state.searchYear}
+
+        ${hint}
+
+        พิมพ์ค่าที่ต้องการค้นหาได้เลยครับ`
+          )
+
+          return res.sendStatus(200)
+        }
 
         // ==================================================
         // SEARCH PAGE
@@ -2411,20 +1951,18 @@ app.post(
             state.searchWaitingSince =
               Date.now()
 
-            await reply(
+            await replyFlex(
               event.replyToken,
-              `โอเคครับ 👤 ${code}
 
-กรุณาเลือกเดือนที่ต้องการค้นหา
+              `เลือกรหัสพนักงาน ${code}`,
 
-พิมพ์เลขเดือน 01 - 12
-
-ตัวอย่าง:
-
-01 = มกราคม`
+              buildEmployeeConfirmFlex(
+                code
+              )
             )
 
             return res.sendStatus(200)
+
           }
 
           // ==================================================
