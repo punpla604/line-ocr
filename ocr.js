@@ -12,39 +12,152 @@ async function ocrImage(imageBuffer) {
     throw new Error('Missing env: OCRSPACE_KEY')
   }
 
-  const form = new FormData()
+  const maxRetries = 3
 
-  form.append('apikey', OCRSPACE_KEY)
-  form.append('language', 'eng')
-  form.append('OCREngine', '2')
-  form.append('scale', 'true')
-  form.append('isTable', 'true')
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(
+        `OCR attempt ${attempt}/${maxRetries}`
+      )
 
-  form.append('file', imageBuffer, {
-    filename: 'receipt.jpg'
-  })
+      const form = new FormData()
 
-  const res = await axios.post(
-    'https://api.ocr.space/parse/image',
-    form,
-    {
-      headers: form.getHeaders(),
-      timeout: 30000
+      form.append('apikey', OCRSPACE_KEY)
+      form.append('language', 'eng')
+      form.append('OCREngine', '2')
+      form.append('scale', 'true')
+      form.append('isTable', 'true')
+
+      form.append('file', imageBuffer, {
+        filename: 'receipt.jpg'
+      })
+
+      const res = await axios.post(
+        'https://api.ocr.space/parse/image',
+        form,
+        {
+          headers: form.getHeaders(),
+          timeout: 60000
+        }
+      )
+
+      // ==================================================
+      // OCR API ERROR
+      // ==================================================
+
+      if (res.data?.IsErroredOnProcessing) {
+        const errorMessage =
+          res.data?.ErrorMessage?.join?.(', ') ||
+          'OCR processing failed'
+
+        // Free API ถูก throttle
+        if (
+          errorMessage.includes('E571') ||
+          errorMessage.toLowerCase().includes(
+            'api overloaded'
+          ) ||
+          errorMessage.toLowerCase().includes(
+            'api key is throttled'
+          )
+        ) {
+          console.warn(
+            `OCR API throttled. Retry ${attempt}/${maxRetries}`
+          )
+
+          if (attempt < maxRetries) {
+            await new Promise(resolve =>
+              setTimeout(resolve, 5000 * attempt)
+            )
+
+            continue
+          }
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      const text =
+        res.data?.ParsedResults?.[0]?.ParsedText ||
+        ''
+
+      if (!text.trim()) {
+        throw new Error(
+          'OCR returned empty result'
+        )
+      }
+
+      console.log(
+        'OCR SUCCESS'
+      )
+
+      return text
+
+    } catch (err) {
+
+      const message =
+        err?.message || ''
+
+      console.error(
+        `OCR ERROR attempt ${attempt}/${maxRetries}:`,
+        message
+      )
+
+      // ==================================================
+      // TIMEOUT
+      // ==================================================
+
+      if (
+        err.code === 'ECONNABORTED' ||
+        message.includes('timeout')
+      ) {
+
+        if (attempt < maxRetries) {
+
+          console.log(
+            `OCR timeout. Waiting before retry...`
+          )
+
+          await new Promise(resolve =>
+            setTimeout(resolve, 5000 * attempt)
+          )
+
+          continue
+        }
+      }
+
+      // ==================================================
+      // E571 / THROTTLE
+      // ==================================================
+
+      if (
+        message.includes('E571') ||
+        message.toLowerCase().includes(
+          'throttled'
+        ) ||
+        message.toLowerCase().includes(
+          'overloaded'
+        )
+      ) {
+
+        if (attempt < maxRetries) {
+
+          await new Promise(resolve =>
+            setTimeout(resolve, 5000 * attempt)
+          )
+
+          continue
+        }
+      }
+
+      throw err
     }
-  )
-
-  if (res.data?.IsErroredOnProcessing) {
-    throw new Error(
-      res.data?.ErrorMessage?.join?.(', ') ||
-      'OCR processing failed'
-    )
   }
 
-  return (
-    res.data?.ParsedResults?.[0]?.ParsedText ||
-    ''
+  throw new Error(
+    'OCR failed after multiple retries'
   )
 }
+
 
 // ==================================================
 // Receipt format check
