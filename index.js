@@ -775,6 +775,7 @@ function buildSearchListFlex(
           {
             type: 'box',
             layout: 'horizontal',
+            spacing: 'sm',
 
             contents: [
 
@@ -785,8 +786,7 @@ function buildSearchListFlex(
                 size: 'sm',
                 weight: 'bold',
                 color: '#333333',
-                flex: 0,
-                width: '28px'
+                flex: 0
               },
 
               {
@@ -795,19 +795,19 @@ function buildSearchListFlex(
                   safeFlexText(date),
                 size: 'sm',
                 color: '#333333',
-                flex: 2,
+                flex: 1,
                 wrap: true
               },
 
               {
                 type: 'text',
                 text:
-                  totalText,
+                  `${totalText} บาท`,
                 size: 'sm',
                 weight: 'bold',
                 color: '#1976D2',
                 align: 'end',
-                flex: 1,
+                flex: 0,
                 wrap: true
               }
 
@@ -818,6 +818,7 @@ function buildSearchListFlex(
             type: 'box',
             layout: 'horizontal',
             margin: 'xs',
+            spacing: 'sm',
 
             contents: [
 
@@ -839,7 +840,6 @@ function buildSearchListFlex(
 
                 action: {
                   type: 'postback',
-
                   label: 'ดูข้อมูล',
 
                   data:
@@ -857,6 +857,7 @@ function buildSearchListFlex(
 
         ]
       })
+
     }
   )
 
