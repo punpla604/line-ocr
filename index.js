@@ -28,12 +28,6 @@ const {
   buildSearchDetailFlex
 } = require('./search-flex')
 
-
-const SUMMARY_PASSWORD =
-  String(
-    process.env.SUMMARY_PASSWORD || ''
-  ).trim()
-
 const {
   verifySummaryPassword
 } = require('./summary-auth')
@@ -45,15 +39,16 @@ app.use(express.json())
 const LINE_TOKEN = process.env.LINE_TOKEN
 const SHEET_ID = process.env.SHEET_ID
 
-// ==================================================
-// GOOGLE SERVICE ACCOUNT
-// ==================================================
-
 const GOOGLE_SERVICE_ACCOUNT_EMAIL =
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
 
 const GOOGLE_PRIVATE_KEY =
   process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+
+const WAIT_IMAGE_MS = 60 * 1000
+const WAIT_SEARCH_MS = 60 * 1000
+
+const userState = new Map()
 
 // ==================================================
 // GOOGLE SHEETS
@@ -82,37 +77,31 @@ function getSheetsClient() {
     )
   }
 
-  const auth =
-    new google.auth.GoogleAuth({
-      credentials: {
-        client_email:
-          GOOGLE_SERVICE_ACCOUNT_EMAIL,
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email:
+        GOOGLE_SERVICE_ACCOUNT_EMAIL,
 
-        private_key:
-          GOOGLE_PRIVATE_KEY
-      },
+      private_key:
+        GOOGLE_PRIVATE_KEY
+    },
 
-      scopes: [
-        'https://www.googleapis.com/auth/spreadsheets'
-      ]
-    })
+    scopes: [
+      'https://www.googleapis.com/auth/spreadsheets'
+    ]
+  })
 
-  const googleSheets =
-    google.sheets({
-      version: 'v4',
-      auth
-    })
-
-  sheetsClient = googleSheets
+  sheetsClient = google.sheets({
+    version: 'v4',
+    auth
+  })
 
   return sheetsClient
 }
 
 // ==================================================
-// USER STATE
+// STATE
 // ==================================================
-
-const userState = new Map()
 
 function defaultState() {
   return {
@@ -128,21 +117,15 @@ function defaultState() {
     searchYear: '',
     searchWaitingSince: null,
 
-    // ==================================================
-    // SEARCH PAGINATION
-    // ==================================================
-
     searchResults: [],
     searchPage: 1,
     searchTotal: 0,
 
     summaryMonth: '',
     summaryYear: '',
-    summaryWaitingSince: null,
+    summaryWaitingSince: null
   }
 }
-
-
 
 function getState(userId) {
   if (!userState.has(userId)) {
@@ -167,12 +150,12 @@ function resetState(userId) {
 }
 
 // ==================================================
-// CANCEL
+// HELPERS
 // ==================================================
 
 function isCancelMessage(text) {
   const t =
-    (text || '')
+    String(text || '')
       .trim()
       .toLowerCase()
 
@@ -184,12 +167,8 @@ function isCancelMessage(text) {
   ].includes(t)
 }
 
-// ==================================================
-// EMPLOYEE CODE
-// ==================================================
-
 function normalizeEmployeeCode(text) {
-  return (text || '')
+  return String(text || '')
     .trim()
     .toUpperCase()
     .replace(/\s+/g, '')
@@ -212,29 +191,13 @@ function isValidEmployeeCode(code) {
   )
 }
 
-// ==================================================
-// TIMEOUT
-// ==================================================
-
-const WAIT_IMAGE_MS =
-  60 * 1000
-
-const WAIT_SEARCH_MS =
-  60 * 1000
-
 function isExpired(ts, ms) {
   if (!ts) {
     return false
   }
 
-  return (
-    Date.now() - ts > ms
-  )
+  return Date.now() - ts > ms
 }
-
-// ==================================================
-// FORMAT NUMBER
-// ==================================================
 
 function formatNumber(value) {
   if (
@@ -250,8 +213,7 @@ function formatNumber(value) {
       .replace(/,/g, '')
       .trim()
 
-  const num =
-    Number(text)
+  const num = Number(text)
 
   if (Number.isNaN(num)) {
     return String(value)
@@ -260,55 +222,70 @@ function formatNumber(value) {
   return num.toLocaleString('en-US')
 }
 
-// ==================================================
-// FORMAT SEARCH RESULT
-// ==================================================
+function isValidMonth(text) {
+  return /^(0[1-9]|1[0-2])$/.test(
+    String(text || '').trim()
+  )
+}
 
-function formatResultItem(
-  d,
-  index
-) {
-  return `🧾 รายการที่ ${index + 1}
-
-BN: ${d.bn || '-'}
-
-HN: ${d.hn || '-'}
-
-Name: ${d.name || '-'}
-
-Date: ${
-    d.dateText ||
-    d.dateShort ||
-    d.date ||
-    '-'
+function isValidYear(text) {
+  if (!/^\d{4}$/.test(text)) {
+    return false
   }
 
-Payment: ${
-    d.paymentType ||
-    '-'
+  const currentYear =
+    new Date().getFullYear()
+
+  const minYear =
+    currentYear - 5
+
+  const year =
+    Number(text)
+
+  return (
+    year >= minYear &&
+    year <= currentYear
+  )
+}
+
+function getYearRangeText() {
+  const currentYear =
+    new Date().getFullYear()
+
+  return `${
+    currentYear - 5
+  } - ${currentYear}`
+}
+
+function isValidDate(text) {
+  const regex =
+    /^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/
+
+  if (!regex.test(text)) {
+    return false
   }
 
-Total: ${
-    formatNumber(d.total)
-  }
+  const [
+    day,
+    month,
+    year
+  ] =
+    text
+      .split('/')
+      .map(Number)
 
-Doctor Fee: ${
-    formatNumber(
-      d.doctorFee
+  const date =
+    new Date(
+      year,
+      month - 1,
+      day
     )
-  }
 
-Hospital & Nursing: ${
-    formatNumber(
-      d.hospitalNursing ||
-      d.hospitalNursingFee ||
-      d.hospital_nursing
-    )
-  }
-
-Other: ${
-    formatNumber(d.other)
-  }`
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  )
 }
 
 // ==================================================
@@ -321,6 +298,7 @@ async function reply(
 ) {
   return axios.post(
     'https://api.line.me/v2/bot/message/reply',
+
     {
       replyToken,
 
@@ -331,6 +309,7 @@ async function reply(
         }
       ]
     },
+
     {
       headers: {
         Authorization:
@@ -345,10 +324,6 @@ async function reply(
   )
 }
 
-// ==================================================
-// LINE FLEX REPLY
-// ==================================================
-
 async function replyFlex(
   replyToken,
   altText,
@@ -356,6 +331,7 @@ async function replyFlex(
 ) {
   return axios.post(
     'https://api.line.me/v2/bot/message/reply',
+
     {
       replyToken,
 
@@ -367,6 +343,7 @@ async function replyFlex(
         }
       ]
     },
+
     {
       headers: {
         Authorization:
@@ -380,9 +357,6 @@ async function replyFlex(
     }
   )
 }
-  
-
- 
 
 // ==================================================
 // SHOW SEARCH RESULTS
@@ -392,7 +366,6 @@ async function showSearchResults(
   replyToken,
   state
 ) {
-
   const list =
     Array.isArray(
       state.searchResults
@@ -401,7 +374,6 @@ async function showSearchResults(
       : []
 
   if (list.length === 0) {
-
     await reply(
       replyToken,
 
@@ -417,17 +389,12 @@ Year: ${state.searchYear}
     return
   }
 
-  const flex =
-    buildSearchListFlex(
-      state
-    )
-
   await replyFlex(
     replyToken,
 
     `รายการเอกสาร ${list.length} รายการ`,
 
-    flex
+    buildSearchListFlex(state)
   )
 }
 
@@ -440,7 +407,6 @@ async function showSearchDetail(
   state,
   index
 ) {
-
   const list =
     Array.isArray(
       state.searchResults
@@ -452,7 +418,6 @@ async function showSearchDetail(
     list[index]
 
   if (!item) {
-
     await reply(
       replyToken,
       '⚠️ ไม่พบรายการนี้แล้วครับ\nกรุณากลับไปค้นหาใหม่'
@@ -461,91 +426,66 @@ async function showSearchDetail(
     return
   }
 
-  const flex =
-    buildSearchDetailFlex(
-      item,
-      index,
-      state.searchPage || 1
-    )
-
   await replyFlex(
     replyToken,
 
     `รายละเอียดรายการที่ ${index + 1}`,
 
-    flex
-  )
-}
-
-
-// ==================================================
-// GOOGLE SHEET READ
-// ==================================================
-
-async function getSheetValues(
-  range
-) {
-  const sheets =
-    getSheetsClient()
-
-  const res =
-    await sheets.spreadsheets.values.get({
-      spreadsheetId:
-        SHEET_ID,
-
-      range,
-
-      majorDimension:
-        'ROWS'
-    })
-
-  return (
-    res.data.values || []
+    buildSearchDetailFlex(
+      item,
+      index,
+      state.searchPage || 1
+    )
   )
 }
 
 // ==================================================
-// FIND SHEET DATA
+// QUERY GOOGLE SHEET
 // ==================================================
 
 async function querySheet(params = {}) {
-  if (!SHEET_ID) {
-    throw new Error('Missing env: SHEET_ID')
-  }
+  const sheets =
+    getSheetsClient()
 
-  const sheets = getSheetsClient()
+  const action =
+    String(
+      params.action || ''
+    ).trim()
 
-  const action = String(
-    params.action || ''
-  ).trim()
+  const employeeCode =
+    String(
+      params.employeeCode || ''
+    ).trim()
 
-  const employeeCode = String(
-    params.employeeCode || ''
-  ).trim()
+  const month =
+    String(
+      params.month || ''
+    ).trim()
 
-  const month = String(
-    params.month || ''
-  ).trim()
+  const year =
+    String(
+      params.year || ''
+    ).trim()
 
-  const year = String(
-    params.year || ''
-  ).trim()
+  const bn =
+    String(
+      params.bn || ''
+    ).trim()
 
-  const bn = String(
-    params.bn || ''
-  ).trim()
+  const hn =
+    String(
+      params.hn || ''
+    ).trim()
 
-  const hn = String(
-    params.hn || ''
-  ).trim()
+  const name =
+    String(
+      params.name || ''
+    ).trim()
 
-  const name = String(
-    params.name || ''
-  ).trim()
-
-  const date = String(
-    params.date || ''
-  ).trim()
+  const date =
+    String(
+      params.date || ''
+    ).trim()
 
   console.log(
     'GOOGLE SHEET QUERY:',
@@ -561,26 +501,19 @@ async function querySheet(params = {}) {
     }
   )
 
-  // ==================================================
-  // READ GOOGLE SHEET
-  // ==================================================
-
   const response =
     await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
+
       range:
         process.env.SHEET_RANGE ||
         'Sheet1!A:Z',
+
       majorDimension: 'ROWS'
     })
 
   const rows =
     response.data.values || []
-
-  console.log(
-    'GOOGLE SHEET RAW ROW COUNT:',
-    rows.length
-  )
 
   if (rows.length === 0) {
     return {
@@ -589,10 +522,6 @@ async function querySheet(params = {}) {
     }
   }
 
-  // ==================================================
-  // HEADER
-  // ==================================================
-
   const headers =
     rows[0].map(header =>
       String(header || '')
@@ -600,19 +529,13 @@ async function querySheet(params = {}) {
         .toLowerCase()
     )
 
-  console.log(
-    'GOOGLE SHEET HEADERS:',
-    headers
-  )
-
   const dataRows =
     rows.slice(1)
 
-  // ==================================================
-  // GET COLUMN
-  // ==================================================
-
-  function getColumn(row, possibleNames) {
+  function getColumn(
+    row,
+    possibleNames
+  ) {
     for (
       const possibleName of possibleNames
     ) {
@@ -632,10 +555,6 @@ async function querySheet(params = {}) {
 
     return ''
   }
-
-  // ==================================================
-  // ROW -> OBJECT
-  // ==================================================
 
   function rowToObject(row) {
     return {
@@ -680,9 +599,7 @@ async function querySheet(params = {}) {
         ]),
 
       hn:
-        getColumn(row, [
-          'hn'
-        ]),
+        getColumn(row, ['hn']),
 
       name:
         getColumn(row, [
@@ -700,14 +617,10 @@ async function querySheet(params = {}) {
         ]),
 
       vat:
-        getColumn(row, [
-          'vat'
-        ]),
+        getColumn(row, ['vat']),
 
       total:
-        getColumn(row, [
-          'total'
-        ]),
+        getColumn(row, ['total']),
 
       doctorFee:
         getColumn(row, [
@@ -725,9 +638,7 @@ async function querySheet(params = {}) {
         ]),
 
       other:
-        getColumn(row, [
-          'other'
-        ]),
+        getColumn(row, ['other']),
 
       itemJson:
         getColumn(row, [
@@ -736,43 +647,23 @@ async function querySheet(params = {}) {
         ]),
 
       raw:
-        getColumn(row, [
-          'raw'
-        ]),
+        getColumn(row, ['raw']),
 
       month: '',
       year: ''
     }
   }
 
-  // ==================================================
-  // IMPORTANT
-  // แปลง Google Sheet rows -> objects
-  // ==================================================
-
   const data =
     dataRows.map(row =>
       rowToObject(row)
     )
-
-  console.log(
-    'GOOGLE SHEET DATA COUNT:',
-    data.length
-  )
-
-  // ==================================================
-  // NORMALIZE
-  // ==================================================
 
   function normalizeText(value) {
     return String(value || '')
       .trim()
       .toLowerCase()
   }
-
-  // ==================================================
-  // GET MONTH / YEAR FROM DATE
-  // ==================================================
 
   function getRowMonthYear(item) {
     const rawDate =
@@ -781,19 +672,6 @@ async function querySheet(params = {}) {
         item.date ||
         ''
       ).trim()
-
-    console.log(
-      'CHECK ROW DATE:',
-      {
-        rawDate,
-        itemMonth: item.month,
-        itemYear: item.year
-      }
-    )
-
-    // -----------------------------------------------
-    // YYYY-MM-DD
-    // -----------------------------------------------
 
     let match =
       rawDate.match(
@@ -809,10 +687,6 @@ async function querySheet(params = {}) {
       }
     }
 
-    // -----------------------------------------------
-    // DD/MM/YYYY
-    // -----------------------------------------------
-
     match =
       rawDate.match(
         /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
@@ -826,11 +700,6 @@ async function querySheet(params = {}) {
             .padStart(2, '0')
       }
     }
-
-    // -----------------------------------------------
-    // DD Month YYYY
-    // เช่น 31 January 2026
-    // -----------------------------------------------
 
     const parsedDate =
       new Date(rawDate)
@@ -853,35 +722,20 @@ async function querySheet(params = {}) {
       }
     }
 
-    // -----------------------------------------------
-    // fallback
-    // -----------------------------------------------
-
     return {
       year:
-        String(
-          item.year || ''
-        ).trim(),
+        String(item.year || '')
+          .trim(),
 
       month:
-        String(
-          item.month || ''
-        )
+        String(item.month || '')
           .trim()
           .padStart(2, '0')
     }
   }
 
-  // ==================================================
-  // COMMON FILTER
-  // ==================================================
-
   let filtered =
     data.filter(item => {
-
-      // -----------------------------------------------
-      // EMPLOYEE
-      // -----------------------------------------------
 
       if (
         employeeCode &&
@@ -894,10 +748,6 @@ async function querySheet(params = {}) {
       ) {
         return false
       }
-
-      // -----------------------------------------------
-      // MONTH / YEAR
-      // -----------------------------------------------
 
       if (month || year) {
         const rowDate =
@@ -924,101 +774,41 @@ async function querySheet(params = {}) {
       return true
     })
 
-  // ==================================================
-  // DEBUG BEFORE SEARCH TYPE
-  // ==================================================
-
-  console.log(
-    'FILTERED COMMON COUNT:',
-    filtered.length
-  )
-
-  console.log(
-    'FILTERED COMMON:',
-    filtered
-      .slice(0, 20)
-      .map(item => ({
-        employeeCode:
-          item.employeeCode,
-        bn:
-          item.bn,
-        hn:
-          item.hn,
-        name:
-          item.name,
-        dateText:
-          item.dateText,
-        month:
-          getRowMonthYear(item).month,
-        year:
-          getRowMonthYear(item).year
-      }))
-  )
-
-  // ==================================================
-  // FIND BY BN
-  // ==================================================
-
   if (
     action === 'findByBN'
   ) {
-    const searchBN =
-      normalizeText(bn)
-
     filtered =
       filtered.filter(item =>
-        normalizeText(
-          item.bn
-        ) === searchBN
+        normalizeText(item.bn) ===
+        normalizeText(bn)
       )
   }
-
-  // ==================================================
-  // FIND BY HN
-  // ==================================================
 
   if (
     action === 'findByHN'
   ) {
-    const searchHN =
-      normalizeText(hn)
-
     filtered =
       filtered.filter(item =>
-        normalizeText(
-          item.hn
-        ) === searchHN
+        normalizeText(item.hn) ===
+        normalizeText(hn)
       )
   }
-
-  // ==================================================
-  // FIND BY NAME
-  // ==================================================
 
   if (
     action === 'findByName'
   ) {
-    const searchName =
-      normalizeText(name)
-
     filtered =
       filtered.filter(item =>
-        normalizeText(
-          item.name
-        ).includes(searchName)
+        normalizeText(item.name)
+          .includes(
+            normalizeText(name)
+          )
       )
   }
-
-  // ==================================================
-  // FIND BY DATE
-  // ==================================================
 
   if (
     action === 'findByDate'
   ) {
-    const searchDate =
-      normalizeText(date)
-
     filtered =
       filtered.filter(item => {
 
@@ -1028,17 +818,13 @@ async function querySheet(params = {}) {
             item.date
           )
 
-        // ตรงแบบ DD/MM/YYYY
         if (
           sheetDate ===
-          searchDate
+          normalizeText(date)
         ) {
           return true
         }
 
-        // แปลงวันที่ Sheet
-        // เช่น 31 January 2026
-        // ให้เทียบกับ DD/MM/YYYY
         const parsed =
           new Date(
             item.dateText ||
@@ -1068,48 +854,12 @@ async function querySheet(params = {}) {
             parsed.getFullYear()
           )
 
-        const normalizedDate =
-          `${day}/${monthValue}/${yearValue}`
-
         return (
-          normalizedDate ===
+          `${day}/${monthValue}/${yearValue}` ===
           date
         )
       })
   }
-
-  // ==================================================
-  // FINAL DEBUG
-  // ==================================================
-
-  console.log(
-    'GOOGLE SHEET RESULT:',
-    {
-      action,
-      count:
-        filtered.length
-    }
-  )
-
-  console.log(
-    'GOOGLE SHEET RESULT LIST:',
-    filtered
-      .slice(0, 20)
-      .map(item => ({
-        employeeCode:
-          item.employeeCode,
-        bn:
-          item.bn,
-        hn:
-          item.hn,
-        name:
-          item.name,
-        dateText:
-          item.dateText,
-        total:
-          item.total
-      }))
-  )
 
   return {
     found:
@@ -1118,96 +868,6 @@ async function querySheet(params = {}) {
     list:
       filtered
   }
-}
-
-// ==================================================
-// VALIDATE MONTH
-// ==================================================
-
-function isValidMonth(text) {
-  return /^(0[1-9]|1[0-2])$/.test(
-    text
-  )
-}
-
-// ==================================================
-// VALIDATE YEAR
-// ==================================================
-
-function isValidYear(text) {
-  if (
-    !/^\d{4}$/.test(text)
-  ) {
-    return false
-  }
-
-  const currentYear =
-    new Date().getFullYear()
-
-  const minYear =
-    currentYear - 5
-
-  const year =
-    Number(text)
-
-  return (
-    year >= minYear &&
-    year <= currentYear
-  )
-}
-
-// ==================================================
-// YEAR RANGE
-// ==================================================
-
-function getYearRangeText() {
-  const currentYear =
-    new Date().getFullYear()
-
-  const minYear =
-    currentYear - 5
-
-  return `${minYear} - ${currentYear}`
-}
-
-// ==================================================
-// VALIDATE DATE
-// ==================================================
-
-function isValidDate(text) {
-  const dateRegex =
-    /^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/
-
-  if (
-    !dateRegex.test(text)
-  ) {
-    return false
-  }
-
-  const [
-    day,
-    month,
-    year
-  ] =
-    text
-      .split('/')
-      .map(Number)
-
-  const date =
-    new Date(
-      year,
-      month - 1,
-      day
-    )
-
-  return (
-    date.getFullYear() ===
-      year &&
-    date.getMonth() ===
-      month - 1 &&
-    date.getDate() ===
-      day
-  )
 }
 
 // ==================================================
@@ -1236,6 +896,7 @@ app.post(
       getState(userId)
 
     try {
+
       // ==================================================
       // POSTBACK
       // ==================================================
@@ -1246,8 +907,7 @@ app.post(
 
         const data =
           String(
-            event.postback?.data ||
-            ''
+            event.postback?.data || ''
           ).trim()
 
         console.log(
@@ -1255,19 +915,19 @@ app.post(
           data
         )
 
-        // ==================================================
+        // --------------------------------------------------
         // NO OP
-        // ==================================================
+        // --------------------------------------------------
 
         if (
-          data ===
-          'search_noop'
+          data === 'search_noop'
         ) {
           return res.sendStatus(200)
         }
-        // ==================================================
+
+        // --------------------------------------------------
         // SEARCH CHOOSE MONTH
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           data === 'search_choose_month'
@@ -1276,7 +936,6 @@ app.post(
           if (
             state.mode !== 'search'
           ) {
-
             await reply(
               event.replyToken,
               '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
@@ -1293,18 +952,16 @@ app.post(
 
           await replyFlex(
             event.replyToken,
-
             '📅 กรุณาเลือกเดือน',
-
-            buildMonthFlex()
+            buildMonthFlex('search')
           )
 
           return res.sendStatus(200)
         }
 
-        // ==================================================
+        // --------------------------------------------------
         // SEARCH MONTH
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           data.startsWith(
@@ -1315,7 +972,6 @@ app.post(
           if (
             state.mode !== 'search'
           ) {
-
             await reply(
               event.replyToken,
               '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
@@ -1347,15 +1003,15 @@ app.post(
 
             `📅 เดือน ${month}\nกรุณาเลือกปี`,
 
-            buildYearFlex()
+            buildYearFlex('search')
           )
 
           return res.sendStatus(200)
         }
-        
-        // ==================================================
+
+        // --------------------------------------------------
         // SEARCH YEAR
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           data.startsWith(
@@ -1366,7 +1022,6 @@ app.post(
           if (
             state.mode !== 'search'
           ) {
-
             await reply(
               event.replyToken,
               '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
@@ -1403,10 +1058,10 @@ app.post(
 
           return res.sendStatus(200)
         }
-        
-        // ==================================================
+
+        // --------------------------------------------------
         // SEARCH TYPE
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           data.startsWith(
@@ -1417,12 +1072,6 @@ app.post(
           if (
             state.mode !== 'search'
           ) {
-
-            await reply(
-              event.replyToken,
-              '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
-            )
-
             return res.sendStatus(200)
           }
 
@@ -1488,22 +1137,22 @@ app.post(
 
             `🔎 ประเภท: ${searchType}
 
-        👤 Employee: ${state.employeeCode}
+👤 Employee: ${state.employeeCode}
 
-        📅 เดือน: ${state.searchMonth}
-        📅 ปี: ${state.searchYear}
+📅 เดือน: ${state.searchMonth}
+📅 ปี: ${state.searchYear}
 
-        ${hint}
+${hint}
 
-        พิมพ์ค่าที่ต้องการค้นหาได้เลยครับ`
+พิมพ์ค่าที่ต้องการค้นหาได้เลยครับ`
           )
 
           return res.sendStatus(200)
         }
 
-        // ==================================================
+        // --------------------------------------------------
         // SEARCH PAGE
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           data.startsWith(
@@ -1512,15 +1161,8 @@ app.post(
         ) {
 
           if (
-            state.mode !==
-            'search'
+            state.mode !== 'search'
           ) {
-
-            await reply(
-              event.replyToken,
-              '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
-            )
-
             return res.sendStatus(200)
           }
 
@@ -1533,7 +1175,6 @@ app.post(
             !Number.isInteger(page) ||
             page < 1
           ) {
-
             return res.sendStatus(200)
           }
 
@@ -1556,7 +1197,6 @@ app.post(
           if (
             page > totalPages
           ) {
-
             return res.sendStatus(200)
           }
 
@@ -1574,9 +1214,9 @@ app.post(
           return res.sendStatus(200)
         }
 
-        // ==================================================
+        // --------------------------------------------------
         // SEARCH DETAIL
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           data.startsWith(
@@ -1585,15 +1225,8 @@ app.post(
         ) {
 
           if (
-            state.mode !==
-            'search'
+            state.mode !== 'search'
           ) {
-
-            await reply(
-              event.replyToken,
-              '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
-            )
-
             return res.sendStatus(200)
           }
 
@@ -1606,7 +1239,6 @@ app.post(
             !Number.isInteger(index) ||
             index < 0
           ) {
-
             return res.sendStatus(200)
           }
 
@@ -1622,6 +1254,166 @@ app.post(
           return res.sendStatus(200)
         }
 
+        // --------------------------------------------------
+        // SUMMARY MONTH
+        // --------------------------------------------------
+
+        if (
+          data.startsWith(
+            'summary_month:'
+          )
+        ) {
+
+          if (
+            state.mode !== 'summary'
+          ) {
+            return res.sendStatus(200)
+          }
+
+          const month =
+            data.split(':')[1]
+
+          if (
+            !isValidMonth(month)
+          ) {
+            return res.sendStatus(200)
+          }
+
+          state.summaryMonth =
+            month
+
+          state.step =
+            'waitingSummaryYear'
+
+          state.summaryWaitingSince =
+            Date.now()
+
+          await replyFlex(
+            event.replyToken,
+
+            `📅 เดือน ${month}\nกรุณาเลือกปี`,
+
+            buildYearFlex('summary')
+          )
+
+          return res.sendStatus(200)
+        }
+
+        // --------------------------------------------------
+        // SUMMARY YEAR
+        // --------------------------------------------------
+
+        if (
+          data.startsWith(
+            'summary_year:'
+          )
+        ) {
+
+          if (
+            state.mode !== 'summary'
+          ) {
+            return res.sendStatus(200)
+          }
+
+          const year =
+            data.split(':')[1]
+
+          if (
+            !isValidYear(year)
+          ) {
+            return res.sendStatus(200)
+          }
+
+          const month =
+            state.summaryMonth
+
+          state.summaryYear =
+            year
+
+          state.summaryWaitingSince =
+            Date.now()
+
+          try {
+
+            console.log(
+              'SUMMARY REQUEST:',
+              {
+                month,
+                year
+              }
+            )
+
+            const summary =
+              await getMonthlySummary(
+                month,
+                year
+              )
+
+            console.log(
+              'SUMMARY RESULT:',
+              summary
+            )
+
+            resetState(userId)
+
+            if (
+              Number(
+                summary?.count || 0
+              ) === 0
+            ) {
+
+              await reply(
+                event.replyToken,
+
+                `📊 สรุปยอดรวม
+
+เดือน: ${month}
+ปี: ${year}
+
+❌ ไม่พบข้อมูลในเดือนนี้ครับ
+
+ลองตรวจสอบเดือน / ปีอีกครั้งครับ
+
+พิมพ์ "สรุปยอดรวม" เพื่อค้นหาใหม่`
+              )
+
+              return res.sendStatus(200)
+            }
+
+            await replyFlex(
+              event.replyToken,
+
+              `📊 สรุปยอดรวม ${month}/${year}`,
+
+              buildSummaryFlex(
+                summary,
+                month,
+                year
+              )
+            )
+
+            return res.sendStatus(200)
+
+          } catch (summaryError) {
+
+            console.error(
+              'SUMMARY ERROR:',
+              summaryError.response?.data ||
+              summaryError.message
+            )
+
+            resetState(userId)
+
+            await reply(
+              event.replyToken,
+
+              '⚠️ ไม่สามารถคำนวณสรุปยอดได้ครับ\nกรุณาลองใหม่อีกครั้ง'
+            )
+
+            return res.sendStatus(200)
+          }
+        }
+
         return res.sendStatus(200)
       }
 
@@ -1630,111 +1422,93 @@ app.post(
       // ==================================================
 
       if (
-        event.message?.type ===
-        'text'
+        event.message?.type === 'text'
       ) {
 
         const text =
-          (
-            event.message.text ||
-            ''
+          String(
+            event.message.text || ''
           ).trim()
 
-        // ==================================================
-        // UPLOAD TIMEOUT
-        // ==================================================
+        // --------------------------------------------------
+        // TIMEOUT
+        // --------------------------------------------------
 
         if (
           state.mode === 'upload' &&
-          state.step ===
-            'waitingImage'
+          state.step === 'waitingImage' &&
+          isExpired(
+            state.waitingSince,
+            WAIT_IMAGE_MS
+          )
         ) {
 
-          if (
-            isExpired(
-              state.waitingSince,
-              WAIT_IMAGE_MS
-            )
-          ) {
+          resetState(userId)
 
-            resetState(userId)
+          await reply(
+            event.replyToken,
 
-            await reply(
-              event.replyToken,
-              '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
-            )
+            '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
+          )
 
-            return res.sendStatus(200)
-          }
+          return res.sendStatus(200)
         }
-
-        // ==================================================
-        // SEARCH TIMEOUT
-        // ==================================================
 
         if (
           state.mode === 'search' &&
-          state.step !== 'idle'
+          state.step !== 'idle' &&
+          isExpired(
+            state.searchWaitingSince,
+            WAIT_SEARCH_MS
+          )
         ) {
 
-          if (
-            isExpired(
-              state.searchWaitingSince,
-              WAIT_SEARCH_MS
-            )
-          ) {
+          resetState(userId)
 
-            resetState(userId)
+          await reply(
+            event.replyToken,
 
-            await reply(
-              event.replyToken,
-              '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะค้นหาใหม่ พิมพ์ "ค้นหา"'
-            )
+            '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะค้นหาใหม่ พิมพ์ "ค้นหา"'
+          )
 
-            return res.sendStatus(200)
-          }
+          return res.sendStatus(200)
         }
-
-        // ==================================================
-        // SUMMARY TIMEOUT
-        // ==================================================
 
         if (
           state.mode === 'summary' &&
-          state.step !== 'idle'
+          state.step !== 'idle' &&
+          isExpired(
+            state.summaryWaitingSince,
+            WAIT_SEARCH_MS
+          )
         ) {
-          if (
-            isExpired(
-              state.summaryWaitingSince,
-              WAIT_SEARCH_MS
-            )
-          ) {
-            resetState(userId)
 
-            await reply(
-              event.replyToken,
-              '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะสรุปยอดใหม่ พิมพ์ "สรุปยอดรวม"'
-            )
+          resetState(userId)
 
-            return res.sendStatus(200)
-          }
+          await reply(
+            event.replyToken,
+
+            '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะสรุปยอดใหม่ พิมพ์ "สรุปยอดรวม"'
+          )
+
+          return res.sendStatus(200)
         }
 
-        // ==================================================
+        // --------------------------------------------------
         // CANCEL
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           isCancelMessage(text)
         ) {
 
           if (
-            state.mode ===
-            'idle'
+            state.mode === 'idle'
           ) {
 
             await reply(
               event.replyToken,
+
               'ตอนนี้ยังไม่ได้เริ่มอะไรครับ 🙂\nพิมพ์ "ส่งเอกสาร" หรือ "ค้นหา" ได้เลย'
             )
 
@@ -1751,9 +1525,9 @@ app.post(
           return res.sendStatus(200)
         }
 
-        // ==================================================
+        // --------------------------------------------------
         // START UPLOAD
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           text === 'ส่งเอกสาร'
@@ -1770,15 +1544,16 @@ app.post(
 
           await reply(
             event.replyToken,
+
             '🟦 ส่งเอกสาร\nกรุณาพิมพ์รหัสพนักงานครับ 👤'
           )
 
           return res.sendStatus(200)
         }
 
-        // ==================================================
+        // --------------------------------------------------
         // START SEARCH
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           text === 'ค้นหา'
@@ -1798,26 +1573,32 @@ app.post(
 
           await reply(
             event.replyToken,
+
             '🔎 ค้นหา\nกรุณาพิมพ์รหัสพนักงานก่อนครับ 👤'
           )
 
           return res.sendStatus(200)
         }
 
-        // ==================================================
+        // --------------------------------------------------
         // START SUMMARY
-        // ==================================================
+        // --------------------------------------------------
 
         if (
           text === 'สรุปยอดรวม'
         ) {
+
           const auth =
             await require('./summary-auth')
               .checkUser(userId)
 
-          if (auth.locked) {
+          if (
+            auth.locked
+          ) {
+
             await reply(
               event.replyToken,
+
               '🔒 บัญชีนี้ถูกล็อกไม่ให้เข้าดูสรุปยอดรวมแล้วครับ\nกรุณาติดต่อผู้ดูแลระบบ'
             )
 
@@ -1838,6 +1619,7 @@ app.post(
 
           await reply(
             event.replyToken,
+
             '🔐 สรุปยอดรวม\n\nกรุณาใส่รหัสผ่านเพื่อดำเนินการต่อครับ'
           )
 
@@ -1849,13 +1631,8 @@ app.post(
         // ==================================================
 
         if (
-          state.mode ===
-          'upload'
+          state.mode === 'upload'
         ) {
-
-          // ==================================================
-          // EMPLOYEE CODE
-          // ==================================================
 
           if (
             state.step ===
@@ -1871,6 +1648,7 @@ app.post(
 
               await reply(
                 event.replyToken,
+
                 '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
               )
 
@@ -1888,6 +1666,7 @@ app.post(
 
             await reply(
               event.replyToken,
+
               `โอเคครับ 👤 ${code}
 
 ส่งรูปใบเสร็จมาได้เลยครับ (ทีละ 1 รูป) 🧾`
@@ -1896,10 +1675,6 @@ app.post(
             return res.sendStatus(200)
           }
 
-          // ==================================================
-          // WAITING IMAGE
-          // ==================================================
-
           if (
             state.step ===
             'waitingImage'
@@ -1907,6 +1682,7 @@ app.post(
 
             await reply(
               event.replyToken,
+
               'ตอนนี้รอรูปใบเสร็จอยู่นะครับ 🧾\nส่งรูปมาได้เลย หรือพิมพ์ "ยกเลิก"'
             )
 
@@ -1919,13 +1695,8 @@ app.post(
         // ==================================================
 
         if (
-          state.mode ===
-          'search'
+          state.mode === 'search'
         ) {
-
-          // ==================================================
-          // SEARCH EMPLOYEE CODE
-          // ==================================================
 
           if (
             state.step ===
@@ -1941,6 +1712,7 @@ app.post(
 
               await reply(
                 event.replyToken,
+
                 '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
               )
 
@@ -1967,12 +1739,7 @@ app.post(
             )
 
             return res.sendStatus(200)
-
           }
-
-          // ==================================================
-          // SEARCH MONTH
-          // ==================================================
 
           if (
             state.step ===
@@ -1983,28 +1750,19 @@ app.post(
               text.trim()
 
             if (
-              month ===
-              'แก้เดือน'
+              month === 'แก้เดือน'
             ) {
 
-              state.step =
-                'waitingSearchMonth'
+              await replyFlex(
+                event.replyToken,
+
+                '📅 เลือกเดือนใหม่',
+
+                buildMonthFlex('search')
+              )
 
               state.searchWaitingSince =
                 Date.now()
-
-              await reply(
-                event.replyToken,
-                `📅 แก้เดือน
-
-กรุณาพิมพ์เดือน 01 - 12
-
-ตัวอย่าง:
-
-01 = มกราคม
-
-หรือพิมพ์ "ยกเลิก"`
-              )
 
               return res.sendStatus(200)
             }
@@ -2015,6 +1773,7 @@ app.post(
 
               await reply(
                 event.replyToken,
+
                 '❌ เดือนไม่ถูกต้องครับ\nต้องเป็น 01 ถึง 12 เท่านั้น\nหรือพิมพ์ "ยกเลิก"'
               )
 
@@ -2030,29 +1789,16 @@ app.post(
             state.searchWaitingSince =
               Date.now()
 
-            await reply(
+            await replyFlex(
               event.replyToken,
-              `📅 เดือน ${month}
 
-กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+              `📅 เดือน ${month}\nกรุณาเลือกปี`,
 
-ปีที่สามารถค้นหาได้:
-
-${getYearRangeText()}
-
-ตัวอย่าง:
-
-2026
-
-ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"`
+              buildYearFlex('search')
             )
 
             return res.sendStatus(200)
           }
-
-          // ==================================================
-          // SEARCH YEAR
-          // ==================================================
 
           if (
             state.step ===
@@ -2063,32 +1809,19 @@ ${getYearRangeText()}
               text.trim()
 
             if (
-              year ===
-              'แก้ปี'
+              year === 'แก้ปี'
             ) {
 
-              state.step =
-                'waitingSearchYear'
+              await replyFlex(
+                event.replyToken,
+
+                '📅 เลือกปีใหม่',
+
+                buildYearFlex('search')
+              )
 
               state.searchWaitingSince =
                 Date.now()
-
-              await reply(
-                event.replyToken,
-                `📅 แก้ปี
-
-กรุณาพิมพ์ปี ค.ศ. 4 หลัก
-
-ปีที่สามารถค้นหาได้:
-
-${getYearRangeText()}
-
-ตัวอย่าง:
-
-2026
-
-หรือพิมพ์ "ยกเลิก"`
-              )
 
               return res.sendStatus(200)
             }
@@ -2097,27 +1830,17 @@ ${getYearRangeText()}
               !isValidYear(year)
             ) {
 
-              const currentYear =
-                new Date().getFullYear()
-
-              const minYear =
-                currentYear - 5
-
               await reply(
                 event.replyToken,
+
                 `❌ ปีไม่ถูกต้องครับ
 
-ปีต้องอยู่ระหว่าง ${minYear} - ${currentYear}
+ปีต้องอยู่ระหว่าง ${getYearRangeText()}
 
 ไม่สามารถเลือกปีอนาคตได้
-
 และย้อนหลังเกิน 5 ปีไม่ได้
 
-กรุณาพิมพ์ปีใหม่อีกครั้ง
-
-หรือพิมพ์ "แก้เดือน"
-
-หรือ "ยกเลิก"`
+กรุณาพิมพ์ปีใหม่อีกครั้ง`
               )
 
               return res.sendStatus(200)
@@ -2132,39 +1855,21 @@ ${getYearRangeText()}
             state.searchWaitingSince =
               Date.now()
 
-            await reply(
+            await replyFlex(
               event.replyToken,
-              `📅 ช่วงค้นหา
 
-เดือน: ${state.searchMonth}
-ปี: ${state.searchYear}
+              `📅 ${state.searchMonth}/${state.searchYear}\nเลือกประเภทการค้นหา`,
 
-เลือกประเภทค้นหา (พิมพ์เลข):
-
-1) BN
-2) HN
-3) NAME
-4) DATE
-
-ถ้าต้องการแก้เดือน พิมพ์ "แก้เดือน"
-
-ถ้าต้องการแก้ปี พิมพ์ "แก้ปี"`
+              buildSearchTypeFlex()
             )
 
             return res.sendStatus(200)
           }
 
-          // ==================================================
-          // CHOOSE SEARCH TYPE
-          // ==================================================
-
           if (
             state.step ===
             'chooseSearchType'
           ) {
-
-            const t =
-              text.trim()
 
             const map = {
               '1': 'BN',
@@ -2173,18 +1878,22 @@ ${getYearRangeText()}
               '4': 'DATE'
             }
 
-            if (!map[t]) {
+            const type =
+              map[text.trim()]
+
+            if (!type) {
 
               await reply(
                 event.replyToken,
-                '❌ กรุณาพิมพ์แค่ 1 / 2 / 3 / 4\nหรือพิมพ์ "ยกเลิก"'
+
+                '❌ กรุณาพิมพ์ 1 / 2 / 3 / 4 หรือใช้ปุ่มเลือกประเภทการค้นหา'
               )
 
               return res.sendStatus(200)
             }
 
             state.searchType =
-              map[t]
+              type
 
             state.step =
               'waitingSearchValue'
@@ -2194,41 +1903,30 @@ ${getYearRangeText()}
 
             let hint = ''
 
-            if (
-              state.searchType ===
-              'BN'
-            ) {
+            if (type === 'BN') {
               hint =
                 'พิมพ์เลข BN เช่น L69-01-003-761'
             }
 
-            if (
-              state.searchType ===
-              'HN'
-            ) {
+            if (type === 'HN') {
               hint =
                 'พิมพ์เลข HN เช่น 01-01-26-047'
             }
 
-            if (
-              state.searchType ===
-              'NAME'
-            ) {
+            if (type === 'NAME') {
               hint =
                 'พิมพ์ชื่อคนไข้'
             }
 
-            if (
-              state.searchType ===
-              'DATE'
-            ) {
+            if (type === 'DATE') {
               hint =
-                'พิมพ์วันที่รูปแบบ DD/MM/YYYY เช่น 11/02/2026'
+                'พิมพ์วันที่ DD/MM/YYYY เช่น 11/02/2026'
             }
 
             await reply(
               event.replyToken,
-              `🔎 ประเภท: ${state.searchType}
+
+              `🔎 ประเภท: ${type}
 
 เดือน: ${state.searchMonth}
 ปี: ${state.searchYear}
@@ -2241,10 +1939,6 @@ ${hint}
             return res.sendStatus(200)
           }
 
-          // ==================================================
-          // SEARCH VALUE
-          // ==================================================
-
           if (
             state.step ===
             'waitingSearchValue'
@@ -2253,28 +1947,16 @@ ${hint}
             const value =
               text.trim()
 
-            const employeeCode =
-              state.employeeCode
-
-            const month =
-              state.searchMonth
-
-            const year =
-              state.searchYear
-
             if (!value) {
 
               await reply(
                 event.replyToken,
+
                 '❌ ค่าว่างครับ พิมพ์ใหม่อีกครั้ง หรือพิมพ์ "ยกเลิก"'
               )
 
               return res.sendStatus(200)
             }
-
-            // ==================================================
-            // DATE VALIDATION
-            // ==================================================
 
             if (
               state.searchType ===
@@ -2287,6 +1969,7 @@ ${hint}
 
                 await reply(
                   event.replyToken,
+
                   '❌ รูปแบบวันที่ไม่ถูกต้องครับ\nต้องเป็น DD/MM/YYYY\nตัวอย่าง 11/02/2026'
                 )
 
@@ -2294,296 +1977,122 @@ ${hint}
               }
 
               const [
-                day,
+                ,
                 dateMonth,
                 dateYear
               ] =
                 value.split('/')
 
               if (
-                dateMonth !== month ||
-                dateYear !== year
+                dateMonth !==
+                  state.searchMonth ||
+                dateYear !==
+                  state.searchYear
               ) {
 
                 await reply(
                   event.replyToken,
+
                   `❌ วันที่ไม่ตรงกับช่วงที่เลือกครับ
 
 คุณเลือก:
-
-เดือน ${month}
-ปี ${year}
+เดือน ${state.searchMonth}
+ปี ${state.searchYear}
 
 แต่วันที่ที่พิมพ์คือ:
-
-${value}
-
-กรุณาพิมพ์วันที่ที่อยู่ในเดือน ${month}/${year} ครับ`
+${value}`
                 )
 
                 return res.sendStatus(200)
               }
             }
 
-            // ==================================================
-            // COMMON SEARCH PARAMS
-            // ==================================================
-
             const baseParams = {
-              employeeCode,
-              month,
-              year
+              employeeCode:
+                state.employeeCode,
+
+              month:
+                state.searchMonth,
+
+              year:
+                state.searchYear
             }
 
-            // ==================================================
-            // BN
-            // ==================================================
+            let result = null
 
             if (
-              state.searchType ===
-              'BN'
+              state.searchType === 'BN'
             ) {
 
-              console.log(
-                'SEARCH BN:',
-                {
-                  employeeCode,
-                  month,
-                  year,
-                  value
-                }
-              )
-
-              const result =
+              result =
                 await querySheet({
-                  action:
-                    'findByBN',
-
+                  action: 'findByBN',
                   ...baseParams,
-
                   bn: value
                 })
 
-              console.log(
-                'BN RESULT:',
-                result
-              )
-
-              const list =
-                Array.isArray(
-                  result?.list
-                )
-                  ? result.list
-                  : []
-
-              state.searchResults =
-                list
-
-              state.searchTotal =
-                list.length
-
-              state.searchPage =
-                1
-
-              state.searchWaitingSince =
-                Date.now()
-
-              await showSearchResults(
-                event.replyToken,
-                state
-              )
-
-              return res.sendStatus(200)
-
-            }
-
-            // ==================================================
-            // HN
-            // ==================================================
-
-            if (
-              state.searchType ===
-              'HN'
+            } else if (
+              state.searchType === 'HN'
             ) {
 
-              console.log(
-                'SEARCH HN:',
-                {
-                  employeeCode,
-                  month,
-                  year,
-                  value
-                }
-              )
-
-              const result =
+              result =
                 await querySheet({
-                  action:
-                    'findByHN',
-
+                  action: 'findByHN',
                   ...baseParams,
-
                   hn: value
                 })
 
-              console.log(
-                'HN RESULT:',
-                result
-              )
-
-              const list =
-                Array.isArray(
-                  result?.list
-                )
-                  ? result.list
-                  : []
-
-              state.searchResults =
-                list
-
-              state.searchTotal =
-                list.length
-
-              state.searchPage =
-                1
-
-              state.searchWaitingSince =
-                Date.now()
-
-              await showSearchResults(
-                event.replyToken,
-                state
-              )
-
-              return res.sendStatus(200)
-
-            }
-
-            // ==================================================
-            // NAME
-            // ==================================================
-
-            if (
-              state.searchType ===
-              'NAME'
+            } else if (
+              state.searchType === 'NAME'
             ) {
 
-              console.log(
-                'SEARCH NAME:',
-                {
-                  employeeCode,
-                  month,
-                  year,
-                  value
-                }
-              )
-
-              const result =
+              result =
                 await querySheet({
-                  action:
-                    'findByName',
-
+                  action: 'findByName',
                   ...baseParams,
-
                   name: value
                 })
 
-              console.log(
-                'NAME RESULT:',
-                result
-              )
-
-              const list =
-                Array.isArray(
-                  result?.list
-                )
-                  ? result.list
-                  : []
-
-              state.searchResults =
-                list
-
-              state.searchTotal =
-                list.length
-
-              state.searchPage =
-                1
-
-              state.searchWaitingSince =
-                Date.now()
-
-              await showSearchResults(
-                event.replyToken,
-                state
-              )
-
-              return res.sendStatus(200)
-
-            }
-
-            // ==================================================
-            // DATE
-            // ==================================================
-
-            if (
-              state.searchType ===
-              'DATE'
+            } else if (
+              state.searchType === 'DATE'
             ) {
 
-              console.log(
-                'SEARCH DATE:',
-                {
-                  employeeCode,
-                  month,
-                  year,
-                  value
-                }
-              )
-
-              const result =
+              result =
                 await querySheet({
-                  action:
-                    'findByDate',
-
+                  action: 'findByDate',
                   ...baseParams,
-
                   date: value
                 })
-
-              console.log(
-                'DATE RESULT:',
-                result
-              )
-
-              const list =
-                Array.isArray(
-                  result?.list
-                )
-                  ? result.list
-                  : []
-
-              state.searchResults =
-                list
-
-              state.searchTotal =
-                list.length
-
-              state.searchPage =
-                1
-
-              state.searchWaitingSince =
-                Date.now()
-
-              await showSearchResults(
-                event.replyToken,
-                state
-              )
-
-              return res.sendStatus(200)
-
             }
+
+            const list =
+              Array.isArray(
+                result?.list
+              )
+                ? result.list
+                : []
+
+            state.searchResults =
+              list
+
+            state.searchTotal =
+              list.length
+
+            state.searchPage =
+              1
+
+            state.searchWaitingSince =
+              Date.now()
+
+            await showSearchResults(
+              event.replyToken,
+              state
+            )
+
+            return res.sendStatus(200)
           }
         }
+
         // ==================================================
         // SUMMARY MODE
         // ==================================================
@@ -2591,84 +2100,72 @@ ${value}
         if (
           state.mode === 'summary'
         ) {
-          // ==================================================
+
+          // ------------------------------------------------
           // SUMMARY PASSWORD
-          // ==================================================
+          // ------------------------------------------------
 
           if (
             state.step ===
             'waitingSummaryPassword'
           ) {
+
             const password =
               text.trim()
 
             try {
+
               const result =
                 await verifySummaryPassword(
                   userId,
                   password
                 )
 
-              // -----------------------------------------------
-              // LOCKED
-              // -----------------------------------------------
-
               if (
                 result.locked
               ) {
+
                 resetState(userId)
 
                 await reply(
                   event.replyToken,
+
                   '❌ รหัสผ่านไม่ถูกต้องครบ 3 ครั้ง\n\n🔒 บัญชีนี้ถูกล็อกไม่ให้เข้าดูสรุปยอดรวมแล้วครับ\nกรุณาติดต่อผู้ดูแลระบบ'
                 )
 
                 return res.sendStatus(200)
               }
 
-              // -----------------------------------------------
-              // SUCCESS
-              // -----------------------------------------------
-
               if (
-                  result.success
-                ) {
-                  state.step =
-                    'waitingSummaryMonth'
+                result.success
+              ) {
 
-                  state.summaryWaitingSince =
-                    Date.now()
+                state.step =
+                  'waitingSummaryMonth'
 
-                  await reply(
-                    event.replyToken,
-                    `✅ รหัสผ่านถูกต้องครับ
+                state.summaryWaitingSince =
+                  Date.now()
 
-                📊 สรุปยอดรวม
+                await replyFlex(
+                  event.replyToken,
 
-                กรุณาเลือกเดือนที่ต้องการค้นหา
+                  '📊 กรุณาเลือกเดือน',
 
-                พิมพ์เลขเดือน 01 - 12
+                  buildMonthFlex('summary')
+                )
 
-                ตัวอย่าง:
-                01 = มกราคม`
-                  )
-
-                  return res.sendStatus(200)
-                }
-
-
-              // -----------------------------------------------
-              // WRONG PASSWORD
-              // -----------------------------------------------
+                return res.sendStatus(200)
+              }
 
               await reply(
                 event.replyToken,
+
                 `❌ รหัสผ่านไม่ถูกต้องครับ
 
-          เหลือโอกาสอีก ${result.remaining} ครั้ง
+เหลือโอกาสอีก ${result.remaining} ครั้ง
 
-          กรุณาลองใหม่อีกครั้ง
-          หรือพิมพ์ "ยกเลิก"`
+กรุณาลองใหม่อีกครั้ง
+หรือพิมพ์ "ยกเลิก"`
               )
 
               return res.sendStatus(200)
@@ -2683,38 +2180,38 @@ ${value}
 
               await reply(
                 event.replyToken,
+
                 '⚠️ ไม่สามารถตรวจสอบสิทธิ์ได้ครับ\nกรุณาลองใหม่อีกครั้ง'
               )
 
               return res.sendStatus(200)
             }
           }
-          // ==================================================
-          // SUMMARY MONTH
-          // ==================================================
+
+          // ------------------------------------------------
+          // SUMMARY MONTH FROM TEXT
+          // ------------------------------------------------
 
           if (
-            data.startsWith('summary_month:')
+            state.step ===
+            'waitingSummaryMonth'
           ) {
 
-            if (
-              state.mode !== 'summary'
-            ) {
-
-              await reply(
-                event.replyToken,
-                '⏱️ session สรุปยอดหมดอายุแล้วครับ\nพิมพ์ "สรุปยอดรวม" เพื่อเริ่มใหม่'
-              )
-
-              return res.sendStatus(200)
-            }
-
             const month =
-              data.split(':')[1]
+              text.trim()
 
             if (
               !isValidMonth(month)
             ) {
+
+              await replyFlex(
+                event.replyToken,
+
+                '📊 กรุณาเลือกเดือน',
+
+                buildMonthFlex('summary')
+              )
+
               return res.sendStatus(200)
             }
 
@@ -2738,131 +2235,46 @@ ${value}
             return res.sendStatus(200)
           }
 
-
-          // ==================================================
-          // SUMMARY YEAR
-          // ==================================================
+          // ------------------------------------------------
+          // SUMMARY YEAR FROM TEXT
+          // ------------------------------------------------
 
           if (
-            data.startsWith('summary_year:')
+            state.step ===
+            'waitingSummaryYear'
           ) {
 
-            if (
-              state.mode !== 'summary'
-            ) {
-
-              await reply(
-                event.replyToken,
-                '⏱️ session สรุปยอดหมดอายุแล้วครับ\nพิมพ์ "สรุปยอดรวม" เพื่อเริ่มใหม่'
-              )
-
-              return res.sendStatus(200)
-            }
-
             const year =
-              data.split(':')[1]
+              text.trim()
 
             if (
               !isValidYear(year)
             ) {
-              return res.sendStatus(200)
-            }
-
-            const month =
-              state.summaryMonth
-
-            state.summaryYear =
-              year
-
-            state.summaryWaitingSince =
-              Date.now()
-
-            try {
-
-              console.log(
-                'SUMMARY REQUEST:',
-                {
-                  month,
-                  year
-                }
-              )
-
-              const summary =
-                await getMonthlySummary(
-                  month,
-                  year
-                )
-
-              console.log(
-                'SUMMARY RESULT:',
-                summary
-              )
-
-              resetState(userId)
-
-              // ==================================================
-              // NO DATA
-              // ==================================================
-
-              if (
-                Number(summary?.count || 0) === 0
-              ) {
-
-                await reply(
-                  event.replyToken,
-
-                  `📊 สรุปยอดรวม
-
-          เดือน: ${month}
-          ปี: ${year}
-
-          ❌ ไม่พบข้อมูลในเดือนนี้ครับ
-
-          ลองตรวจสอบเดือน / ปีอีกครั้งครับ
-
-          พิมพ์ "สรุปยอดรวม" เพื่อค้นหาใหม่`
-                )
-
-                return res.sendStatus(200)
-              }
-
-              // ==================================================
-              // SUMMARY FLEX
-              // ==================================================
 
               await replyFlex(
                 event.replyToken,
 
-                `📊 สรุปยอดรวม ${month}/${year}`,
+                '📊 กรุณาเลือกปี',
 
-                buildSummaryFlex(
-                  summary,
-                  month,
-                  year
-                )
-              )
-
-              return res.sendStatus(200)
-
-            } catch (summaryError) {
-
-              console.error(
-                'SUMMARY ERROR:',
-                summaryError.response?.data ||
-                summaryError.message
-              )
-
-              resetState(userId)
-
-              await reply(
-                event.replyToken,
-                '⚠️ ไม่สามารถคำนวณสรุปยอดได้ครับ\nกรุณาลองใหม่อีกครั้ง'
+                buildYearFlex('summary')
               )
 
               return res.sendStatus(200)
             }
-          }
 
+            state.summaryYear =
+              year
+
+            await processSummary(
+              event.replyToken,
+              userId,
+              state.summaryMonth,
+              state.summaryYear
+            )
+
+            return res.sendStatus(200)
+          }
+        }
 
         // ==================================================
         // DEFAULT
@@ -2870,7 +2282,8 @@ ${value}
 
         await reply(
           event.replyToken,
-`👋 สวัสดีครับ
+
+          `👋 สวัสดีครับ
 
 📌 เลือกเมนูที่ต้องการได้เลย
 
@@ -2878,8 +2291,10 @@ ${value}
 สำหรับส่งใบเสร็จเข้าระบบ
 
 🔎 "ค้นหา"
-สำหรับค้นหาข้อมูลใบเสร็จ`
+สำหรับค้นหาข้อมูลใบเสร็จ
 
+📊 "สรุปยอดรวม"
+สำหรับดูยอดรวม`
         )
 
         return res.sendStatus(200)
@@ -2890,8 +2305,7 @@ ${value}
       // ==================================================
 
       if (
-        event.message?.type ===
-        'image'
+        event.message?.type === 'image'
       ) {
 
         if (
@@ -2902,15 +2316,12 @@ ${value}
 
           await reply(
             event.replyToken,
+
             'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" แล้วใส่รหัสพนักงานก่อนครับ 🙂'
           )
 
           return res.sendStatus(200)
         }
-
-        // ==================================================
-        // IMAGE TIMEOUT
-        // ==================================================
 
         if (
           isExpired(
@@ -2923,6 +2334,7 @@ ${value}
 
           await reply(
             event.replyToken,
+
             '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
           )
 
@@ -2932,13 +2344,10 @@ ${value}
         const messageId =
           event.message.id
 
-        // ==================================================
-        // GET IMAGE FROM LINE
-        // ==================================================
-
         const imageRes =
           await axios.get(
             `https://api-data.line.me/v2/bot/message/${messageId}/content`,
+
             {
               headers: {
                 Authorization:
@@ -2951,10 +2360,6 @@ ${value}
               timeout: 20000
             }
           )
-
-        // ==================================================
-        // OCR
-        // ==================================================
 
         const ocrText =
           await ocrImage(
@@ -2970,18 +2375,15 @@ ${value}
 
           await reply(
             event.replyToken,
+
             'อ่านตัวอักษรไม่ออกครับ 😅 กรุณาลองถ่ายใหม่ให้ชัดขึ้น'
           )
 
           return res.sendStatus(200)
         }
 
-        // ==================================================
-        // CHECK RECEIPT
-        // ==================================================
-
         const receiptText =
-          (ocrText || '')
+          String(ocrText)
             .toLowerCase()
             .replace(
               /\s+/g,
@@ -3000,15 +2402,12 @@ ${value}
 
           await reply(
             event.replyToken,
+
             '❌ รูปนี้ไม่ใช่ใบเสร็จรูปแบบที่รองรับครับ\nกรุณาส่งใบเสร็จ Asoke Skin Hospital เท่านั้น 🧾'
           )
 
           return res.sendStatus(200)
         }
-
-        // ==================================================
-        // PARSE
-        // ==================================================
 
         const parsed =
           parseReceipt(
@@ -3027,24 +2426,6 @@ ${value}
         parsed.other =
           parsed.other || ''
 
-        console.log(
-          'Parsed expense:',
-          {
-            doctorFee:
-              parsed.doctorFee,
-
-            hospitalNursing:
-              parsed.hospitalNursing,
-
-            other:
-              parsed.other
-          }
-        )
-
-        // ==================================================
-        // SAVE
-        // ==================================================
-
         await sendToSheet(
           parsed
         )
@@ -3052,12 +2433,9 @@ ${value}
         state.waitingSince =
           Date.now()
 
-        // ==================================================
-        // REPLY
-        // ==================================================
-
         await reply(
           event.replyToken,
+
           `✅ บันทึกเรียบร้อยครับ
 
 👤 รหัสพนักงาน: ${state.employeeCode}
@@ -3084,6 +2462,8 @@ Other: ${formatNumber(parsed.other)}
         return res.sendStatus(200)
       }
 
+      return res.sendStatus(200)
+
     } catch (err) {
 
       console.error(
@@ -3096,6 +2476,7 @@ Other: ${formatNumber(parsed.other)}
 
         await reply(
           event.replyToken,
+
           '⚠️ ระบบค้นหาหรือประมวลผลเกิดข้อผิดพลาดครับ\nกรุณาลองใหม่อีกครั้ง'
         )
 
@@ -3107,11 +2488,99 @@ Other: ${formatNumber(parsed.other)}
           replyErr.message
         )
       }
-    }
 
-    return res.sendStatus(200)
+      return res.sendStatus(200)
+    }
   }
 )
+
+// ==================================================
+// SUMMARY PROCESS
+// ==================================================
+
+async function processSummary(
+  replyToken,
+  userId,
+  month,
+  year
+) {
+
+  try {
+
+    console.log(
+      'SUMMARY REQUEST:',
+      {
+        month,
+        year
+      }
+    )
+
+    const summary =
+      await getMonthlySummary(
+        month,
+        year
+      )
+
+    console.log(
+      'SUMMARY RESULT:',
+      summary
+    )
+
+    resetState(userId)
+
+    if (
+      Number(
+        summary?.count || 0
+      ) === 0
+    ) {
+
+      await reply(
+        replyToken,
+
+        `📊 สรุปยอดรวม
+
+เดือน: ${month}
+ปี: ${year}
+
+❌ ไม่พบข้อมูลในเดือนนี้ครับ
+
+ลองตรวจสอบเดือน / ปีอีกครั้งครับ
+
+พิมพ์ "สรุปยอดรวม" เพื่อค้นหาใหม่`
+      )
+
+      return
+    }
+
+    await replyFlex(
+      replyToken,
+
+      `📊 สรุปยอดรวม ${month}/${year}`,
+
+      buildSummaryFlex(
+        summary,
+        month,
+        year
+      )
+    )
+
+  } catch (summaryError) {
+
+    console.error(
+      'SUMMARY ERROR:',
+      summaryError.response?.data ||
+      summaryError.message
+    )
+
+    resetState(userId)
+
+    await reply(
+      replyToken,
+
+      '⚠️ ไม่สามารถคำนวณสรุปยอดได้ครับ\nกรุณาลองใหม่อีกครั้ง'
+    )
+  }
+}
 
 // ==================================================
 // START
@@ -3119,6 +2588,7 @@ Other: ${formatNumber(parsed.other)}
 
 app.listen(
   3000,
+
   () => {
     console.log(
       '🚀 LINE webhook running on port 3000'
