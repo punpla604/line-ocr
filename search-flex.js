@@ -813,7 +813,12 @@ function buildEmployeeConfirmFlex(employeeCode) {
 // MONTH FLEX
 // ==================================================
 
-function buildMonthFlex() {
+function buildMonthFlex(mode = 'search') {
+
+  const prefix =
+    mode === 'summary'
+      ? 'summary_month:'
+      : 'search_month:'
 
   const months = [
     ['01', 'มกราคม'],
@@ -835,92 +840,111 @@ function buildMonthFlex() {
   for (
     let i = 0;
     i < months.length;
-    i += 2
+    i += 3
   ) {
 
-    const left =
-      months[i]
+    const rowItems =
+      months
+        .slice(i, i + 3)
+        .map(([value, label]) => ({
+          type: 'button',
 
-    const right =
-      months[i + 1]
+          style: 'secondary',
+
+          height: 'sm',
+
+          action: {
+            type: 'postback',
+
+            label:
+              `${value} ${label}`,
+
+            data:
+              `${prefix}${value}`,
+
+            displayText:
+              `เดือน ${value}`
+          }
+        }))
 
     rows.push({
       type: 'box',
+
       layout: 'horizontal',
+
       spacing: 'sm',
 
-      contents: [
-
-        {
-          type: 'button',
-          style: 'secondary',
-          height: 'sm',
-          flex: 1,
-
-          action: {
-            type: 'postback',
-            label:
-              `${left[0]} ${left[1]}`,
-            data:
-              `search_month:${left[0]}`
-          }
-        },
-
-        {
-          type: 'button',
-          style: 'secondary',
-          height: 'sm',
-          flex: 1,
-
-          action: {
-            type: 'postback',
-            label:
-              `${right[0]} ${right[1]}`,
-            data:
-              `search_month:${right[0]}`
-          }
-        }
-
-      ]
+      contents:
+        rowItems
     })
   }
 
   return {
     type: 'bubble',
+
     size: 'mega',
 
-    header: {
+    body: {
       type: 'box',
+
       layout: 'vertical',
-      backgroundColor: '#1976D2',
-      paddingAll: '18px',
+
+      paddingAll: '20px',
 
       contents: [
+
         {
           type: 'text',
-          text: '📅 เลือกเดือน',
-          color: '#FFFFFF',
+
+          text:
+            mode === 'summary'
+              ? '📊 เลือกเดือนสรุปยอด'
+              : '📅 เลือกเดือน',
+
+          weight: 'bold',
+
           size: 'xl',
-          weight: 'bold'
+
+          color: '#111111'
         },
 
         {
           type: 'text',
-          text: 'เลือกเดือนที่ต้องการค้นหา',
-          color: '#E3F2FD',
+
+          text:
+            mode === 'summary'
+              ? 'เลือกเดือนที่ต้องการดูยอดรวม'
+              : 'เลือกเดือนที่ต้องการค้นหา',
+
           size: 'sm',
-          margin: 'sm'
+
+          color: '#777777',
+
+          margin: 'sm',
+
+          wrap: true
+        },
+
+        {
+          type: 'separator',
+
+          margin: 'lg'
+        },
+
+        {
+          type: 'box',
+
+          layout: 'vertical',
+
+          spacing: 'sm',
+
+          margin: 'lg',
+
+          contents:
+            rows
         }
+
       ]
-    },
-
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'sm',
-      paddingAll: '14px',
-
-      contents: rows
     }
   }
 }
@@ -930,13 +954,18 @@ function buildMonthFlex() {
 // YEAR FLEX
 // ==================================================
 
-function buildYearFlex() {
+function buildYearFlex(mode = 'search') {
 
   const currentYear =
     new Date().getFullYear()
 
   const minYear =
     currentYear - 5
+
+  const prefix =
+    mode === 'summary'
+      ? 'summary_year:'
+      : 'search_year:'
 
   const years = []
 
@@ -945,7 +974,9 @@ function buildYearFlex() {
     year >= minYear;
     year--
   ) {
-    years.push(year)
+    years.push(
+      String(year)
+    )
   }
 
   const rows = []
@@ -953,90 +984,111 @@ function buildYearFlex() {
   for (
     let i = 0;
     i < years.length;
-    i += 2
+    i += 3
   ) {
 
-    const contents = []
+    const rowItems =
+      years
+        .slice(i, i + 3)
+        .map(year => ({
 
-    contents.push({
-      type: 'button',
-      style: 'secondary',
-      height: 'sm',
-      flex: 1,
+          type: 'button',
 
-      action: {
-        type: 'postback',
-        label:
-          String(years[i]),
-        data:
-          `search_year:${years[i]}`
-      }
-    })
+          style: 'secondary',
 
-    if (
-      years[i + 1]
-    ) {
-      contents.push({
-        type: 'button',
-        style: 'secondary',
-        height: 'sm',
-        flex: 1,
+          height: 'sm',
 
-        action: {
-          type: 'postback',
-          label:
-            String(years[i + 1]),
-          data:
-            `search_year:${years[i + 1]}`
-        }
-      })
-    }
+          action: {
+            type: 'postback',
+
+            label: year,
+
+            data:
+              `${prefix}${year}`,
+
+            displayText:
+              `ปี ${year}`
+          }
+        }))
 
     rows.push({
       type: 'box',
+
       layout: 'horizontal',
+
       spacing: 'sm',
-      contents
+
+      contents:
+        rowItems
     })
   }
 
   return {
     type: 'bubble',
+
     size: 'mega',
 
-    header: {
+    body: {
       type: 'box',
+
       layout: 'vertical',
-      backgroundColor: '#1976D2',
-      paddingAll: '18px',
+
+      paddingAll: '20px',
 
       contents: [
+
         {
           type: 'text',
-          text: '📅 เลือกปี',
-          color: '#FFFFFF',
+
+          text:
+            mode === 'summary'
+              ? '📊 เลือกปีสรุปยอด'
+              : '📅 เลือกปี',
+
+          weight: 'bold',
+
           size: 'xl',
-          weight: 'bold'
+
+          color: '#111111'
         },
 
         {
           type: 'text',
+
           text:
-            `${minYear} - ${currentYear}`,
-          color: '#E3F2FD',
+            mode === 'summary'
+              ? 'เลือกปีที่ต้องการดูยอดรวม'
+              : 'เลือกปีที่ต้องการค้นหา',
+
           size: 'sm',
-          margin: 'sm'
+
+          color: '#777777',
+
+          margin: 'sm',
+
+          wrap: true
+        },
+
+        {
+          type: 'separator',
+
+          margin: 'lg'
+        },
+
+        {
+          type: 'box',
+
+          layout: 'vertical',
+
+          spacing: 'sm',
+
+          margin: 'lg',
+
+          contents:
+            rows
         }
+
       ]
-    },
-
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'sm',
-      paddingAll: '14px',
-
-      contents: rows
     }
   }
 }

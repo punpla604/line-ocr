@@ -15,6 +15,10 @@ const {
 } = require('./summary')
 
 const {
+  buildSummaryFlex
+} = require('./summary-flex')
+
+const {
   SEARCH_PAGE_SIZE,
   buildEmployeeConfirmFlex,
   buildMonthFlex,
@@ -2627,30 +2631,31 @@ ${value}
               // -----------------------------------------------
 
               if (
-                result.success
-              ) {
-                state.step =
-                  'waitingSummaryMonth'
+                  result.success
+                ) {
+                  state.step =
+                    'waitingSummaryMonth'
 
-                state.summaryWaitingSince =
-                  Date.now()
+                  state.summaryWaitingSince =
+                    Date.now()
 
-                await reply(
-                  event.replyToken,
-                  `✅ รหัสผ่านถูกต้องครับ
+                  await reply(
+                    event.replyToken,
+                    `✅ รหัสผ่านถูกต้องครับ
 
-          📊 สรุปยอดรวม
+                📊 สรุปยอดรวม
 
-          กรุณาเลือกเดือนที่ต้องการค้นหา
+                กรุณาเลือกเดือนที่ต้องการค้นหา
 
-          พิมพ์เลขเดือน 01 - 12
+                พิมพ์เลขเดือน 01 - 12
 
-          ตัวอย่าง:
-          01 = มกราคม`
-                )
+                ตัวอย่าง:
+                01 = มกราคม`
+                  )
 
-                return res.sendStatus(200)
-              }
+                  return res.sendStatus(200)
+                }
+
 
               // -----------------------------------------------
               // WRONG PASSWORD
@@ -2689,21 +2694,27 @@ ${value}
           // ==================================================
 
           if (
-            state.step ===
-            'waitingSummaryMonth'
+            data.startsWith('summary_month:')
           ) {
 
+            if (
+              state.mode !== 'summary'
+            ) {
+
+              await reply(
+                event.replyToken,
+                '⏱️ session สรุปยอดหมดอายุแล้วครับ\nพิมพ์ "สรุปยอดรวม" เพื่อเริ่มใหม่'
+              )
+
+              return res.sendStatus(200)
+            }
+
             const month =
-              text.trim()
+              data.split(':')[1]
 
             if (
               !isValidMonth(month)
             ) {
-              await reply(
-                event.replyToken,
-                '❌ เดือนไม่ถูกต้องครับ\nต้องเป็น 01 ถึง 12 เท่านั้น\nหรือพิมพ์ "ยกเลิก"'
-              )
-
               return res.sendStatus(200)
             }
 
@@ -2716,53 +2727,44 @@ ${value}
             state.summaryWaitingSince =
               Date.now()
 
-            await reply(
+            await replyFlex(
               event.replyToken,
-              `📅 เดือน ${month}
 
-        กรุณาพิมพ์ปี ค.ศ. 4 หลัก
+              `📅 เดือน ${month}\nกรุณาเลือกปี`,
 
-        ตัวอย่าง:
-        2026
-
-        ข้อมูลจะรวมของพนักงานทุกคนครับ`
+              buildYearFlex('summary')
             )
 
             return res.sendStatus(200)
           }
+
 
           // ==================================================
           // SUMMARY YEAR
           // ==================================================
 
           if (
-            state.step ===
-            'waitingSummaryYear'
+            data.startsWith('summary_year:')
           ) {
 
+            if (
+              state.mode !== 'summary'
+            ) {
+
+              await reply(
+                event.replyToken,
+                '⏱️ session สรุปยอดหมดอายุแล้วครับ\nพิมพ์ "สรุปยอดรวม" เพื่อเริ่มใหม่'
+              )
+
+              return res.sendStatus(200)
+            }
+
             const year =
-              text.trim()
+              data.split(':')[1]
 
             if (
               !isValidYear(year)
             ) {
-              const currentYear =
-                new Date().getFullYear()
-
-              const minYear =
-                currentYear - 5
-
-              await reply(
-                event.replyToken,
-                `❌ ปีไม่ถูกต้องครับ
-
-        ปีต้องอยู่ระหว่าง
-        ${minYear} - ${currentYear}
-
-        กรุณาพิมพ์ปีใหม่อีกครั้ง
-        หรือพิมพ์ "ยกเลิก"`
-              )
-
               return res.sendStatus(200)
             }
 
@@ -2774,10 +2776,6 @@ ${value}
 
             state.summaryWaitingSince =
               Date.now()
-
-            // ==================================================
-            // GET SUMMARY
-            // ==================================================
 
             try {
 
@@ -2807,79 +2805,41 @@ ${value}
               // ==================================================
 
               if (
-                summary.count === 0
+                Number(summary?.count || 0) === 0
               ) {
 
                 await reply(
                   event.replyToken,
+
                   `📊 สรุปยอดรวม
 
-        เดือน: ${month}
-        ปี: ${year}
+          เดือน: ${month}
+          ปี: ${year}
 
-        ❌ ไม่พบข้อมูลในเดือนนี้ครับ
+          ❌ ไม่พบข้อมูลในเดือนนี้ครับ
 
-        ลองตรวจสอบเดือน / ปีอีกครั้งครับ
+          ลองตรวจสอบเดือน / ปีอีกครั้งครับ
 
-        พิมพ์ "สรุปยอดรวม" เพื่อค้นหาใหม่`
+          พิมพ์ "สรุปยอดรวม" เพื่อค้นหาใหม่`
                 )
 
                 return res.sendStatus(200)
               }
 
               // ==================================================
-              // FORMAT
+              // SUMMARY FLEX
               // ==================================================
 
-              const formatSummaryNumber =
-                value =>
-                  Number(value || 0)
-                    .toLocaleString(
-                      'en-US',
-                      {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      }
-                    )
-
-              await reply(
+              await replyFlex(
                 event.replyToken,
-                `📊 สรุปยอดรวม
 
-        เดือน: ${month}
-        ปี: ${year}
+                `📊 สรุปยอดรวม ${month}/${year}`,
 
-        จำนวนรายการ: ${summary.count}
-
-        ━━━━━━━━━━━━━━
-
-        👨‍⚕️ Doctor Fee
-        ${formatSummaryNumber(
-          summary.doctorFee
-        )} บาท
-
-        🏥 Hospital & Nursing
-        ${formatSummaryNumber(
-          summary.hospitalNursing
-        )} บาท
-
-        📦 Other
-        ${formatSummaryNumber(
-          summary.other
-        )} บาท
-
-        ━━━━━━━━━━━━━━
-
-        💰 รวมทั้งหมด
-        ${formatSummaryNumber(
-          summary.total
-        )} บาท
-
-        ━━━━━━━━━━━━━━
-
-        ข้อมูลรวมของพนักงานทุกคนครับ
-
-        พิมพ์ "สรุปยอดรวม" เพื่อค้นหาใหม่`
+                buildSummaryFlex(
+                  summary,
+                  month,
+                  year
+                )
               )
 
               return res.sendStatus(200)
@@ -2902,7 +2862,8 @@ ${value}
               return res.sendStatus(200)
             }
           }
-        }
+
+
         // ==================================================
         // DEFAULT
         // ==================================================
