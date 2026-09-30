@@ -1,34 +1,49 @@
-
 // ==================================================
 // SEARCH FLEX MESSAGE
 // ==================================================
 
 const SEARCH_PAGE_SIZE = 10
 
+
+// ==================================================
+// SAFE TEXT
+// ==================================================
+
 function safeFlexText(value) {
+
   const text =
     String(value ?? '-')
       .trim()
 
   return text || '-'
 }
+
+
+// ==================================================
+// FORMAT NUMBER
+// ==================================================
+
 function formatNumber(value) {
-  const num = Number(
-    String(value ?? '0')
-      .replace(/,/g, '')
-      .trim()
-  )
+
+  const num =
+    Number(
+      String(value ?? '0')
+        .replace(/,/g, '')
+        .trim()
+    )
 
   if (isNaN(num)) {
     return '0.00'
   }
 
-  return num.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })
+  return num.toLocaleString(
+    'en-US',
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }
+  )
 }
-
 
 
 // ==================================================
@@ -42,307 +57,516 @@ function buildSearchDetailFlex(
 ) {
 
   return {
+
     type: 'bubble',
+
     size: 'mega',
 
     header: {
+
       type: 'box',
+
       layout: 'vertical',
+
       backgroundColor: '#1976D2',
+
       paddingAll: '18px',
 
       contents: [
+
         {
           type: 'text',
+
           text: '🧾 รายละเอียดเอกสาร',
+
           color: '#FFFFFF',
+
           size: 'lg',
+
           weight: 'bold'
         },
 
         {
           type: 'text',
-          text: `รายการที่ ${index + 1}`,
+
+          text:
+            `รายการที่ ${index + 1}`,
+
           color: '#E3F2FD',
+
           size: 'sm',
+
           margin: 'sm'
         }
+
       ]
     },
 
+
+    // ==================================================
+    // BODY
+    // ==================================================
+
     body: {
+
       type: 'box',
+
       layout: 'vertical',
+
       spacing: 'md',
+
       paddingAll: '18px',
 
       contents: [
 
         {
           type: 'text',
+
           text:
             `BN: ${safeFlexText(item.bn)}`,
+
           size: 'md',
+
           weight: 'bold',
+
           wrap: true
         },
 
         {
           type: 'separator',
+
           margin: 'sm'
         },
 
+
+        // DATE
+
         {
           type: 'box',
+
           layout: 'horizontal',
+
           spacing: 'md',
+
           contents: [
+
             {
               type: 'text',
+
               text: 'วันที่',
+
               size: 'sm',
+
               color: '#777777',
+
               flex: 1
             },
+
             {
               type: 'text',
+
               text:
                 safeFlexText(
                   item.dateText ||
                   item.date
                 ),
+
               size: 'sm',
+
               align: 'end',
+
               flex: 2,
+
               wrap: true
             }
+
           ]
         },
 
+
+        // HN
+
         {
           type: 'box',
+
           layout: 'horizontal',
+
           spacing: 'md',
+
           contents: [
+
             {
               type: 'text',
+
               text: 'HN',
+
               size: 'sm',
+
               color: '#777777',
+
               flex: 1
             },
+
             {
               type: 'text',
+
               text:
                 safeFlexText(item.hn),
+
               size: 'sm',
+
               align: 'end',
+
               flex: 2,
+
               wrap: true
             }
+
           ]
         },
 
+
+        // NAME
+
         {
           type: 'box',
+
           layout: 'horizontal',
+
           spacing: 'md',
+
           contents: [
+
             {
               type: 'text',
+
               text: 'ชื่อ',
+
               size: 'sm',
+
               color: '#777777',
+
               flex: 1
             },
+
             {
               type: 'text',
+
               text:
                 safeFlexText(item.name),
+
               size: 'sm',
+
               align: 'end',
+
               flex: 2,
+
               wrap: true
             }
+
           ]
         },
 
+
+        // PAYMENT
+
         {
           type: 'box',
+
           layout: 'horizontal',
+
           spacing: 'md',
+
           contents: [
+
             {
               type: 'text',
+
               text: 'การชำระเงิน',
+
               size: 'sm',
+
               color: '#777777',
-              flex: 1
+
+              flex: 1,
+
+              wrap: true
             },
+
             {
               type: 'text',
+
               text:
                 safeFlexText(
                   item.paymentType
                 ),
+
               size: 'sm',
+
               align: 'end',
+
               flex: 2,
+
               wrap: true
             }
+
           ]
         },
+
 
         {
           type: 'separator',
+
           margin: 'md'
         },
 
+
+        // TOTAL
+
         {
           type: 'box',
+
           layout: 'horizontal',
+
           spacing: 'md',
+
           contents: [
+
             {
               type: 'text',
+
               text: 'ยอดรวม',
+
               size: 'md',
+
               weight: 'bold',
+
               color: '#333333',
+
               flex: 1
             },
+
             {
               type: 'text',
+
               text:
                 `${formatNumber(item.total)} บาท`,
+
               size: 'md',
+
               weight: 'bold',
+
               color: '#1976D2',
+
               align: 'end',
+
               flex: 2,
+
               wrap: true
             }
+
           ]
         },
 
+
+        // DOCTOR FEE
+
         {
           type: 'box',
+
           layout: 'horizontal',
+
           spacing: 'md',
+
           contents: [
+
             {
               type: 'text',
+
               text: 'Doctor Fee',
+
               size: 'sm',
+
               color: '#777777',
+
               flex: 1
             },
+
             {
               type: 'text',
+
               text:
-                `${formatNumber(item.doctorFee)} บาท`,
+                `${formatNumber(
+                  item.doctorFee
+                )} บาท`,
+
               size: 'sm',
+
               align: 'end',
+
               flex: 2
             }
+
           ]
         },
 
+
+        // HOSPITAL
+
         {
           type: 'box',
+
           layout: 'horizontal',
+
           spacing: 'md',
+
           contents: [
+
             {
               type: 'text',
+
               text: 'Hospital & Nursing',
+
               size: 'sm',
+
               color: '#777777',
-              flex: 1
+
+              flex: 1,
+
+              wrap: true
             },
+
             {
               type: 'text',
+
               text:
                 `${formatNumber(
                   item.hospitalNursing
                 )} บาท`,
+
               size: 'sm',
+
               align: 'end',
+
               flex: 2,
+
               wrap: true
             }
+
           ]
         },
 
+
+        // OTHER
+
         {
           type: 'box',
+
           layout: 'horizontal',
+
           spacing: 'md',
+
           contents: [
+
             {
               type: 'text',
+
               text: 'Other',
+
               size: 'sm',
+
               color: '#777777',
+
               flex: 1
             },
+
             {
               type: 'text',
+
               text:
-                `${formatNumber(item.other)} บาท`,
+                `${formatNumber(
+                  item.other
+                )} บาท`,
+
               size: 'sm',
+
               align: 'end',
+
               flex: 2
             }
+
           ]
         }
+
       ]
     },
 
+
+    // ==================================================
+    // FOOTER
+    // ==================================================
+
     footer: {
+
       type: 'box',
+
       layout: 'horizontal',
+
       spacing: 'sm',
+
       paddingAll: '12px',
 
       contents: [
 
         {
           type: 'button',
+
           style: 'secondary',
+
           height: 'sm',
 
           action: {
+
             type: 'postback',
+
             label: '← กลับรายการ',
 
             data:
-              `search_page:${page}`
+              `search_page:${page}`,
+
+            displayText:
+              `กลับรายการ หน้า ${page}`
           }
         }
 
       ]
     }
+
   }
 }
+
 
 // ==================================================
 // SEARCH LIST FLEX
 // ==================================================
 
-function buildSearchListFlex(
-  state
-) {
+function buildSearchListFlex(state) {
 
   const allResults =
     Array.isArray(
-      state.searchResults
+      state?.searchResults
     )
       ? state.searchResults
       : []
 
+
+  // ==================================================
+  // TOTAL
+  // ==================================================
+
   const total =
     allResults.length
+
 
   const totalPages =
     Math.max(
@@ -353,25 +577,42 @@ function buildSearchListFlex(
       )
     )
 
+
+  // ==================================================
+  // CURRENT PAGE
+  // ==================================================
+
   let page =
     Number(
-      state.searchPage || 1
+      state?.searchPage || 1
     )
 
-  if (page < 1) {
+  if (!Number.isFinite(page)) {
     page = 1
   }
 
-  if (page > totalPages) {
-    page = totalPages
-  }
+  page =
+    Math.max(
+      1,
+      Math.min(
+        page,
+        totalPages
+      )
+    )
+
 
   state.searchPage =
     page
 
+
+  // ==================================================
+  // SLICE DATA
+  // ==================================================
+
   const startIndex =
     (page - 1) *
     SEARCH_PAGE_SIZE
+
 
   const endIndex =
     Math.min(
@@ -380,16 +621,20 @@ function buildSearchListFlex(
       total
     )
 
+
   const pageItems =
     allResults.slice(
       startIndex,
       endIndex
     )
- // ==================================================
+
+
+  // ==================================================
   // ROWS
   // ==================================================
 
   const rows = []
+
 
   pageItems.forEach(
     (item, index) => {
@@ -398,110 +643,164 @@ function buildSearchListFlex(
         startIndex +
         index
 
+
       const date =
-        item.dateText ||
-        item.date ||
+        item?.dateText ||
+        item?.date ||
         '-'
 
+
       const bn =
-        item.bn ||
+        item?.bn ||
         '-'
+
 
       const totalText =
         formatNumber(
-          item.total
+          item?.total
         )
+
 
       rows.push({
 
         type: 'box',
+
         layout: 'vertical',
+
         spacing: 'xs',
+
         paddingTop: '10px',
+
         paddingBottom: '10px',
 
         contents: [
 
+          // ==================================================
+          // TOP ROW
+          // ==================================================
+
           {
             type: 'box',
+
             layout: 'horizontal',
+
             spacing: 'sm',
 
             contents: [
 
               {
                 type: 'text',
+
                 text:
                   `${realIndex + 1}.`,
+
                 size: 'sm',
+
                 weight: 'bold',
+
                 color: '#333333',
+
                 flex: 0
               },
 
               {
                 type: 'text',
+
                 text:
                   safeFlexText(date),
+
                 size: 'sm',
+
                 color: '#333333',
+
                 flex: 1,
+
                 wrap: true
               },
 
               {
                 type: 'text',
+
                 text:
                   `${totalText} บาท`,
+
                 size: 'sm',
+
                 weight: 'bold',
+
                 color: '#1976D2',
+
                 align: 'end',
+
                 flex: 0,
+
                 wrap: true
               }
 
             ]
           },
 
+
+          // ==================================================
+          // BN + DETAIL BUTTON
+          // ==================================================
+
           {
             type: 'box',
+
             layout: 'horizontal',
+
             margin: 'xs',
+
             spacing: 'sm',
 
             contents: [
 
               {
                 type: 'text',
+
                 text:
                   `BN: ${safeFlexText(bn)}`,
+
                 size: 'xs',
+
                 color: '#777777',
+
                 flex: 1,
+
                 wrap: true
               },
 
               {
                 type: 'button',
+
                 style: 'secondary',
+
                 height: 'sm',
+
                 flex: 0,
 
                 action: {
+
                   type: 'postback',
+
                   label: 'ดูข้อมูล',
 
                   data:
-                    `search_detail:${realIndex}`
+                    `search_detail:${realIndex}`,
+
+                  displayText:
+                    `ดูข้อมูลรายการ ${realIndex + 1}`
                 }
               }
 
             ]
           },
 
+
           {
             type: 'separator',
+
             margin: 'sm'
           }
 
@@ -511,6 +810,7 @@ function buildSearchListFlex(
     }
   )
 
+
   // ==================================================
   // HEADER
   // ==================================================
@@ -519,33 +819,46 @@ function buildSearchListFlex(
 
     {
       type: 'text',
+
       text: '📄 รายการเอกสาร',
+
       size: 'xl',
+
       weight: 'bold',
+
       color: '#FFFFFF'
     },
 
     {
       type: 'text',
+
       text:
         total === 0
           ? 'ไม่พบข้อมูล'
           : `แสดง ${startIndex + 1}-${endIndex} จาก ${total} รายการ`,
+
       size: 'sm',
+
       color: '#E3F2FD',
+
       margin: 'sm'
     },
 
     {
       type: 'text',
+
       text:
         `หน้า ${page}/${totalPages}`,
+
       size: 'sm',
+
       color: '#FFFFFF',
+
       margin: 'xs'
     }
 
   ]
+
 
   // ==================================================
   // NAVIGATION
@@ -554,67 +867,108 @@ function buildSearchListFlex(
   const previousPage =
     page - 1
 
+
   const nextPage =
     page + 1
+
 
   const canPrevious =
     page > 1
 
+
   const canNext =
     page < totalPages
+
 
   const navigation = {
 
     type: 'box',
+
     layout: 'horizontal',
+
     spacing: 'sm',
 
     contents: [
 
+      // ==================================================
+      // PREVIOUS
+      // ==================================================
+
       {
         type: 'button',
 
-        style:
-          canPrevious
-            ? 'secondary'
-            : 'secondary',
+        style: 'secondary',
 
         color:
           canPrevious
             ? '#1976D2'
-            : '#BDBDBD',
+            : '#E0E0E0',
 
         height: 'sm',
 
-        action: {
-          type: 'postback',
+        flex: 1,
 
-          label: 'ก่อนหน้า',
+        action:
+          canPrevious
 
-          data:
-            canPrevious
-              ? `search_page:${previousPage}`
-              : 'search_noop'
-        }
+            ? {
+
+                type: 'postback',
+
+                label: '← ก่อนหน้า',
+
+                data:
+                  `search_page:${previousPage}`,
+
+                displayText:
+                  `หน้า ${previousPage}`
+
+              }
+
+            : {
+
+                type: 'message',
+
+                label: '← ก่อนหน้า',
+
+                text: 'ไม่มีหน้าก่อนหน้า'
+
+              }
       },
+
+
+      // ==================================================
+      // CURRENT PAGE
+      // ==================================================
 
       {
         type: 'button',
 
         style: 'primary',
+
         color: '#1976D2',
+
         height: 'sm',
 
+        flex: 1,
+
         action: {
-          type: 'postback',
+
+          type: 'message',
 
           label:
             `${page}/${totalPages}`,
 
-          data:
-            'search_noop'
+          text:
+            `หน้าปัจจุบัน ${page}/${totalPages}`
+
         }
       },
+
+
+      // ==================================================
+      // NEXT
+      // ==================================================
 
       {
         type: 'button',
@@ -624,27 +978,46 @@ function buildSearchListFlex(
         color:
           canNext
             ? '#1976D2'
-            : '#BDBDBD',
+            : '#E0E0E0',
 
         height: 'sm',
 
-        action: {
-          type: 'postback',
+        flex: 1,
 
-          label: 'ถัดไป',
+        action:
+          canNext
 
-          data:
-            canNext
-              ? `search_page:${nextPage}`
-              : 'search_noop'
-        }
+            ? {
+
+                type: 'postback',
+
+                label: 'ถัดไป →',
+
+                data:
+                  `search_page:${nextPage}`,
+
+                displayText:
+                  `หน้า ${nextPage}`
+
+              }
+
+            : {
+
+                type: 'message',
+
+                label: 'ถัดไป →',
+
+                text: 'ไม่มีหน้าถัดไป'
+
+              }
       }
 
     ]
   }
 
+
   // ==================================================
-  // RETURN FLEX
+  // RETURN
   // ==================================================
 
   return {
@@ -653,174 +1026,283 @@ function buildSearchListFlex(
 
     size: 'mega',
 
+
+    // ==================================================
+    // HEADER
+    // ==================================================
+
     header: {
+
       type: 'box',
+
       layout: 'vertical',
+
       backgroundColor: '#1976D2',
+
       paddingAll: '18px',
 
       contents:
         headerContents
     },
 
+
+    // ==================================================
+    // BODY
+    // ==================================================
+
     body: {
+
       type: 'box',
+
       layout: 'vertical',
+
       spacing: 'none',
+
       paddingAll: '14px',
 
       contents:
+
         rows.length > 0
+
           ? rows
+
           : [
+
               {
                 type: 'text',
+
                 text:
                   '❌ ไม่พบข้อมูลครับ',
+
                 align: 'center',
+
                 color: '#777777',
-                margin: 'lg'
+
+                margin: 'lg',
+
+                wrap: true
               }
+
             ]
     },
 
+
+    // ==================================================
+    // FOOTER
+    // ==================================================
+
     footer: {
+
       type: 'box',
+
       layout: 'vertical',
+
       spacing: 'sm',
+
       paddingAll: '12px',
 
       contents: [
+
         navigation,
+
 
         {
           type: 'text',
+
           text:
             `👤 Employee: ${safeFlexText(
-              state.employeeCode
+              state?.employeeCode
             )}`,
 
           size: 'xs',
+
           color: '#888888',
+
           align: 'center',
+
           margin: 'sm'
         },
 
+
         {
           type: 'text',
+
           text:
             `📅 ${safeFlexText(
-              state.searchMonth
+              state?.searchMonth
             )}/${safeFlexText(
-              state.searchYear
+              state?.searchYear
             )}`,
 
           size: 'xs',
+
           color: '#888888',
+
           align: 'center'
         }
+
       ]
     }
+
   }
 }
+
 
 // ==================================================
 // EMPLOYEE FLEX
 // ==================================================
 
-function buildEmployeeConfirmFlex(employeeCode) {
+function buildEmployeeConfirmFlex(
+  employeeCode
+) {
+
   return {
+
     type: 'bubble',
+
     size: 'mega',
 
     header: {
+
       type: 'box',
+
       layout: 'vertical',
+
       backgroundColor: '#1976D2',
+
       paddingAll: '18px',
 
       contents: [
+
         {
           type: 'text',
+
           text: '🔎 ค้นหาเอกสาร',
+
           color: '#FFFFFF',
+
           size: 'xl',
+
           weight: 'bold'
         },
 
         {
           type: 'text',
+
           text: 'รหัสพนักงาน',
+
           color: '#E3F2FD',
+
           size: 'sm',
+
           margin: 'sm'
         }
+
       ]
     },
 
+
     body: {
+
       type: 'box',
+
       layout: 'vertical',
+
       spacing: 'md',
+
       paddingAll: '18px',
 
       contents: [
+
         {
           type: 'text',
-          text: employeeCode,
+
+          text:
+            safeFlexText(employeeCode),
+
           size: 'xxl',
+
           weight: 'bold',
+
           color: '#1976D2',
-          align: 'center'
+
+          align: 'center',
+
+          wrap: true
         },
 
         {
           type: 'text',
-          text: 'เลือกเดือนที่ต้องการค้นหา',
+
+          text:
+            'เลือกเดือนที่ต้องการค้นหา',
+
           size: 'sm',
+
           color: '#777777',
+
           align: 'center',
-          margin: 'md'
+
+          margin: 'md',
+
+          wrap: true
         }
+
       ]
     },
 
+
     footer: {
+
       type: 'box',
+
       layout: 'vertical',
+
       paddingAll: '12px',
 
       contents: [
+
         {
           type: 'button',
+
           style: 'primary',
+
           color: '#1976D2',
 
           action: {
+
             type: 'postback',
+
             label: '📅 เลือกเดือน',
+
             data: 'search_choose_month'
+
           }
         }
+
       ]
     }
+
   }
 }
-
 
 
 // ==================================================
 // MONTH FLEX
 // ==================================================
 
-function buildMonthFlex(mode = 'search') {
+function buildMonthFlex(
+  mode = 'search'
+) {
 
   const prefix =
     mode === 'summary'
       ? 'summary_month:'
       : 'search_month:'
 
+
   const months = [
+
     ['01', 'มกราคม'],
     ['02', 'กุมภาพันธ์'],
     ['03', 'มีนาคม'],
@@ -833,11 +1315,17 @@ function buildMonthFlex(mode = 'search') {
     ['10', 'ตุลาคม'],
     ['11', 'พฤศจิกายน'],
     ['12', 'ธันวาคม']
+
   ]
+
 
   const rows = []
 
-  // ใช้ 2 เดือนต่อแถว
+
+  // ==================================================
+  // 2 MONTHS PER ROW
+  // ==================================================
+
   for (
     let i = 0;
     i < months.length;
@@ -847,30 +1335,35 @@ function buildMonthFlex(mode = 'search') {
     const rowItems =
       months
         .slice(i, i + 2)
-        .map(([value, label]) => ({
+        .map(
+          ([value, label]) => ({
 
-          type: 'button',
+            type: 'button',
 
-          style: 'secondary',
+            style: 'secondary',
 
-          height: 'sm',
+            height: 'sm',
 
-          flex: 1,
+            flex: 1,
 
-          action: {
+            action: {
 
-            type: 'postback',
+              type: 'postback',
 
-            label:
-              `${value} ${label}`,
+              label:
+                `${value} ${label}`,
 
-            data:
-              `${prefix}${value}`,
+              data:
+                `${prefix}${value}`,
 
-            displayText:
-              `เดือน ${value}`
-          }
-        }))
+              displayText:
+                `เดือน ${value}`
+
+            }
+
+          })
+        )
+
 
     rows.push({
 
@@ -882,8 +1375,15 @@ function buildMonthFlex(mode = 'search') {
 
       contents:
         rowItems
+
     })
+
   }
+
+
+  // ==================================================
+  // RETURN
+  // ==================================================
 
   return {
 
@@ -950,10 +1450,12 @@ function buildMonthFlex(mode = 'search') {
 
           contents:
             rows
+
         }
 
       ]
     }
+
   }
 }
 
@@ -962,32 +1464,42 @@ function buildMonthFlex(mode = 'search') {
 // YEAR FLEX
 // ==================================================
 
-function buildYearFlex(mode = 'search') {
+function buildYearFlex(
+  mode = 'search'
+) {
 
   const currentYear =
     new Date().getFullYear()
 
+
   const minYear =
     currentYear - 5
+
 
   const prefix =
     mode === 'summary'
       ? 'summary_year:'
       : 'search_year:'
 
+
   const years = []
+
 
   for (
     let year = currentYear;
     year >= minYear;
     year--
   ) {
+
     years.push(
       String(year)
     )
+
   }
 
+
   const rows = []
+
 
   for (
     let i = 0;
@@ -998,28 +1510,37 @@ function buildYearFlex(mode = 'search') {
     const rowItems =
       years
         .slice(i, i + 3)
-        .map(year => ({
+        .map(
+          year => ({
 
-          type: 'button',
+            type: 'button',
 
-          style: 'secondary',
+            style: 'secondary',
 
-          height: 'sm',
+            height: 'sm',
 
-          action: {
-            type: 'postback',
+            flex: 1,
 
-            label: year,
+            action: {
 
-            data:
-              `${prefix}${year}`,
+              type: 'postback',
 
-            displayText:
-              `ปี ${year}`
-          }
-        }))
+              label: year,
+
+              data:
+                `${prefix}${year}`,
+
+              displayText:
+                `ปี ${year}`
+
+            }
+
+          })
+        )
+
 
     rows.push({
+
       type: 'box',
 
       layout: 'horizontal',
@@ -1028,15 +1549,20 @@ function buildYearFlex(mode = 'search') {
 
       contents:
         rowItems
+
     })
+
   }
 
+
   return {
+
     type: 'bubble',
 
     size: 'mega',
 
     body: {
+
       type: 'box',
 
       layout: 'vertical',
@@ -1094,10 +1620,12 @@ function buildYearFlex(mode = 'search') {
 
           contents:
             rows
+
         }
 
       ]
     }
+
   }
 }
 
@@ -1109,90 +1637,151 @@ function buildYearFlex(mode = 'search') {
 function buildSearchTypeFlex() {
 
   return {
+
     type: 'bubble',
+
     size: 'mega',
 
     header: {
+
       type: 'box',
+
       layout: 'vertical',
+
       backgroundColor: '#1976D2',
+
       paddingAll: '18px',
 
       contents: [
+
         {
           type: 'text',
+
           text: '🔎 ประเภทการค้นหา',
+
           color: '#FFFFFF',
+
           size: 'xl',
+
           weight: 'bold'
         },
 
         {
           type: 'text',
-          text: 'เลือกข้อมูลที่ต้องการค้นหา',
+
+          text:
+            'เลือกข้อมูลที่ต้องการค้นหา',
+
           color: '#E3F2FD',
+
           size: 'sm',
-          margin: 'sm'
+
+          margin: 'sm',
+
+          wrap: true
         }
+
       ]
     },
 
+
     body: {
+
       type: 'box',
+
       layout: 'vertical',
+
       spacing: 'sm',
+
       paddingAll: '14px',
 
       contents: [
 
         {
           type: 'button',
+
           style: 'primary',
+
           color: '#1976D2',
+
           action: {
+
             type: 'postback',
+
             label: '🧾 BN',
+
             data: 'search_type:BN'
+
           }
+
         },
 
         {
           type: 'button',
+
           style: 'primary',
+
           color: '#1976D2',
+
           margin: 'sm',
+
           action: {
+
             type: 'postback',
+
             label: '👤 HN',
+
             data: 'search_type:HN'
+
           }
+
         },
 
         {
           type: 'button',
+
           style: 'primary',
+
           color: '#1976D2',
+
           margin: 'sm',
+
           action: {
+
             type: 'postback',
+
             label: '🧑 ชื่อคนไข้',
+
             data: 'search_type:NAME'
+
           }
+
         },
 
         {
           type: 'button',
+
           style: 'primary',
+
           color: '#1976D2',
+
           margin: 'sm',
+
           action: {
+
             type: 'postback',
+
             label: '📅 วันที่',
+
             data: 'search_type:DATE'
+
           }
+
         }
+
       ]
     }
+
   }
 }
 
@@ -1202,12 +1791,19 @@ function buildSearchTypeFlex() {
 // ==================================================
 
 module.exports = {
-  SEARCH_PAGE_SIZE,
-  buildEmployeeConfirmFlex,
-  buildMonthFlex,
-  buildYearFlex,
-  buildSearchTypeFlex,
-  buildSearchListFlex,
-  buildSearchDetailFlex
-}
 
+  SEARCH_PAGE_SIZE,
+
+  buildEmployeeConfirmFlex,
+
+  buildMonthFlex,
+
+  buildYearFlex,
+
+  buildSearchTypeFlex,
+
+  buildSearchListFlex,
+
+  buildSearchDetailFlex
+
+}
