@@ -82,10 +82,9 @@ function toNumber(value) {
 // DATE
 // ==================================================
 
-function getMonthYearFromDate(rawDate) {
-  const text = String(
-    rawDate || ''
-  ).trim()
+function getDateInfo(rawDate) {
+  const text =
+    String(rawDate || '').trim()
 
   if (!text) {
     return null
@@ -105,6 +104,10 @@ function getMonthYearFromDate(rawDate) {
 
       month:
         String(match[2])
+          .padStart(2, '0'),
+
+      day:
+        String(match[3])
           .padStart(2, '0')
     }
   }
@@ -123,13 +126,82 @@ function getMonthYearFromDate(rawDate) {
 
       month:
         String(match[2])
+          .padStart(2, '0'),
+
+      day:
+        String(match[1])
           .padStart(2, '0')
     }
   }
 
   // ==================================================
-  // DD Month YYYY
-  // เช่น 31 January 2026
+  // YYYY/MM/DD
+  // ==================================================
+
+  match = text.match(
+    /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/
+  )
+
+  if (match) {
+    return {
+      year: match[1],
+
+      month:
+        String(match[2])
+          .padStart(2, '0'),
+
+      day:
+        String(match[3])
+          .padStart(2, '0')
+    }
+  }
+
+  // ==================================================
+  // YYYY-MM-DD HH:mm:ss
+  // ==================================================
+
+  match = text.match(
+    /^(\d{4})-(\d{1,2})-(\d{1,2})/
+  )
+
+  if (match) {
+    return {
+      year: match[1],
+
+      month:
+        String(match[2])
+          .padStart(2, '0'),
+
+      day:
+        String(match[3])
+          .padStart(2, '0')
+    }
+  }
+
+  // ==================================================
+  // DD/MM/YYYY HH:mm:ss
+  // ==================================================
+
+  match = text.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})/
+  )
+
+  if (match) {
+    return {
+      year: match[3],
+
+      month:
+        String(match[2])
+          .padStart(2, '0'),
+
+      day:
+        String(match[1])
+          .padStart(2, '0')
+    }
+  }
+
+  // ==================================================
+  // JS DATE
   // ==================================================
 
   const parsedDate =
@@ -149,6 +221,11 @@ function getMonthYearFromDate(rawDate) {
       month:
         String(
           parsedDate.getMonth() + 1
+        ).padStart(2, '0'),
+
+      day:
+        String(
+          parsedDate.getDate()
         ).padStart(2, '0')
     }
   }
@@ -156,15 +233,25 @@ function getMonthYearFromDate(rawDate) {
   return null
 }
 
+function getMonthYearFromDate(rawDate) {
+  const info =
+    getDateInfo(rawDate)
+
+  if (!info) {
+    return null
+  }
+
+  return {
+    year: info.year,
+    month: info.month
+  }
+}
+
 // ==================================================
-// MONTHLY SUMMARY
+// READ SHEET
 // ==================================================
 
-async function getMonthlySummary(
-  month,
-  year
-) {
-
+async function getSheetRows() {
   const sheets =
     getSheetsClient()
 
@@ -181,15 +268,25 @@ async function getMonthlySummary(
         'ROWS'
     })
 
-  const rows =
-    response.data.values || []
+  return response.data.values || []
+}
+
+// ==================================================
+// SUMMARY CALCULATOR
+// ==================================================
+
+function calculateSummary(
+  rows,
+  options = {}
+) {
+  const {
+    day = '',
+    month = '',
+    year = ''
+  } = options
 
   if (rows.length <= 1) {
-
     return {
-      month,
-      year,
-
       count: 0,
 
       amount: 0,
@@ -218,12 +315,9 @@ async function getMonthlySummary(
   function getColumnIndex(
     possibleNames
   ) {
-
     for (
-      const name
-      of possibleNames
+      const name of possibleNames
     ) {
-
       const normalizedName =
         String(name)
           .trim()
@@ -283,7 +377,8 @@ async function getMonthlySummary(
       'hospital&nursing',
       'hospital & nursing',
       'hospitalnursing',
-      'hospital nursing'
+      'hospital nursing',
+      'hospital and nursing service'
     ])
 
   const otherIndex =
@@ -315,11 +410,29 @@ async function getMonthlySummary(
   // ==================================================
 
   if (dateIndex === -1) {
-
     throw new Error(
       'ไม่พบ column dateText ใน Sheet1'
     )
   }
+
+  // ==================================================
+  // NORMALIZE FILTER
+  // ==================================================
+
+  const targetDay =
+    day
+      ? String(day).padStart(2, '0')
+      : ''
+
+  const targetMonth =
+    month
+      ? String(month).padStart(2, '0')
+      : ''
+
+  const targetYear =
+    year
+      ? String(year)
+      : ''
 
   // ==================================================
   // SUM
@@ -344,28 +457,13 @@ async function getMonthlySummary(
   for (
     const row of rows.slice(1)
   ) {
-
     const rawDate =
       row[dateIndex] || ''
 
     const dateInfo =
-      getMonthYearFromDate(
-        rawDate
-      )
+      getDateInfo(rawDate)
 
     if (!dateInfo) {
-      continue
-    }
-
-    // ------------------------------------------------
-    // MONTH
-    // ------------------------------------------------
-
-    if (
-      dateInfo.month !==
-      String(month)
-        .padStart(2, '0')
-    ) {
       continue
     }
 
@@ -374,8 +472,30 @@ async function getMonthlySummary(
     // ------------------------------------------------
 
     if (
-      dateInfo.year !==
-      String(year)
+      targetYear &&
+      dateInfo.year !== targetYear
+    ) {
+      continue
+    }
+
+    // ------------------------------------------------
+    // MONTH
+    // ------------------------------------------------
+
+    if (
+      targetMonth &&
+      dateInfo.month !== targetMonth
+    ) {
+      continue
+    }
+
+    // ------------------------------------------------
+    // DAY
+    // ------------------------------------------------
+
+    if (
+      targetDay &&
+      dateInfo.day !== targetDay
     ) {
       continue
     }
@@ -389,7 +509,6 @@ async function getMonthlySummary(
     if (
       amountIndex !== -1
     ) {
-
       amount +=
         toNumber(
           row[amountIndex]
@@ -403,7 +522,6 @@ async function getMonthlySummary(
     if (
       discountIndex !== -1
     ) {
-
       discount +=
         toNumber(
           row[discountIndex]
@@ -417,7 +535,6 @@ async function getMonthlySummary(
     if (
       discountByDoctorIndex !== -1
     ) {
-
       discountByDoctor +=
         toNumber(
           row[
@@ -433,7 +550,6 @@ async function getMonthlySummary(
     if (
       doctorFeeIndex !== -1
     ) {
-
       doctorFee +=
         toNumber(
           row[doctorFeeIndex]
@@ -447,7 +563,6 @@ async function getMonthlySummary(
     if (
       hospitalNursingIndex !== -1
     ) {
-
       hospitalNursing +=
         toNumber(
           row[
@@ -463,7 +578,6 @@ async function getMonthlySummary(
     if (
       otherIndex !== -1
     ) {
-
       other +=
         toNumber(
           row[otherIndex]
@@ -477,7 +591,6 @@ async function getMonthlySummary(
     if (
       totalIndex !== -1
     ) {
-
       total +=
         toNumber(
           row[totalIndex]
@@ -488,68 +601,25 @@ async function getMonthlySummary(
   // ==================================================
   // FALLBACK TOTAL
   // ==================================================
-  //
-  // ถ้า Sheet ยังไม่มี column Total
-  // ใช้ Doctor Fee + Hospital & Nursing + Other
-  // เป็น fallback
-  //
-  // ==================================================
 
   if (
     totalIndex === -1
   ) {
-
     total =
       doctorFee +
       hospitalNursing +
       other
   }
 
-  // ==================================================
-  // LOG
-  // ==================================================
-
-  console.log(
-    'MONTHLY SUMMARY:',
-    {
-      month,
-      year,
-
-      count,
-
-      amount,
-      discount,
-      discountByDoctor,
-
-      doctorFee,
-      hospitalNursing,
-      other,
-
-      total
-    }
-  )
-
-  // ==================================================
-  // RETURN
-  // ==================================================
-
   return {
-
-    month,
-    year,
-
     count,
 
     amount,
-
     discount,
-
     discountByDoctor,
 
     doctorFee,
-
     hospitalNursing,
-
     other,
 
     total
@@ -557,9 +627,86 @@ async function getMonthlySummary(
 }
 
 // ==================================================
+// MONTHLY SUMMARY
+// ==================================================
+
+async function getMonthlySummary(
+  month,
+  year
+) {
+  const rows =
+    await getSheetRows()
+
+  const summary =
+    calculateSummary(
+      rows,
+      {
+        month,
+        year
+      }
+    )
+
+  const result = {
+    month,
+    year,
+
+    ...summary
+  }
+
+  console.log(
+    'MONTHLY SUMMARY:',
+    result
+  )
+
+  return result
+}
+
+// ==================================================
+// DAILY SUMMARY
+// ==================================================
+
+async function getDailySummary(
+  day,
+  month,
+  year
+) {
+  const rows =
+    await getSheetRows()
+
+  const summary =
+    calculateSummary(
+      rows,
+      {
+        day,
+        month,
+        year
+      }
+    )
+
+  const result = {
+    day:
+      String(day)
+        .padStart(2, '0'),
+
+    month,
+    year,
+
+    ...summary
+  }
+
+  console.log(
+    'DAILY SUMMARY:',
+    result
+  )
+
+  return result
+}
+
+// ==================================================
 // EXPORT
 // ==================================================
 
 module.exports = {
-  getMonthlySummary
+  getMonthlySummary,
+  getDailySummary
 }

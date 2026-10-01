@@ -3,17 +3,131 @@
 // ==================================================
 
 function formatSummaryNumber(value) {
-  return Number(value || 0).toLocaleString(
-    'en-US',
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }
-  )
+  const num = Number(value || 0)
+
+  if (Number.isNaN(num)) {
+    return '0.00'
+  }
+
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
 }
 
 // ==================================================
-// SUMMARY FLEX
+// SUMMARY TYPE FLEX
+// ==================================================
+
+function buildSummaryTypeFlex() {
+  return {
+    type: 'bubble',
+
+    size: 'mega',
+
+    body: {
+      type: 'box',
+
+      layout: 'vertical',
+
+      paddingAll: '20px',
+
+      contents: [
+
+        {
+          type: 'text',
+
+          text: '📊 เลือกประเภทสรุปยอด',
+
+          weight: 'bold',
+
+          size: 'xl',
+
+          color: '#111111'
+        },
+
+        {
+          type: 'text',
+
+          text: 'ต้องการดูข้อมูลแบบไหนครับ?',
+
+          size: 'sm',
+
+          color: '#777777',
+
+          margin: 'sm',
+
+          wrap: true
+        },
+
+        {
+          type: 'separator',
+
+          margin: 'xl'
+        },
+
+        {
+          type: 'button',
+
+          style: 'primary',
+
+          color: '#0EA5E9',
+
+          margin: 'xl',
+
+          action: {
+            type: 'postback',
+
+            label: '📅 สรุปยอดรายวัน',
+
+            data: 'summary_type:daily',
+
+            displayText: 'สรุปยอดรายวัน'
+          }
+        },
+
+        {
+          type: 'button',
+
+          style: 'primary',
+
+          color: '#16A34A',
+
+          margin: 'md',
+
+          action: {
+            type: 'postback',
+
+            label: '📊 สรุปยอดรายเดือน',
+
+            data: 'summary_type:monthly',
+
+            displayText: 'สรุปยอดรายเดือน'
+          }
+        },
+
+        {
+          type: 'button',
+
+          style: 'secondary',
+
+          margin: 'md',
+
+          action: {
+            type: 'message',
+
+            label: '❌ ยกเลิก',
+
+            text: 'ยกเลิก'
+          }
+        }
+      ]
+    }
+  }
+}
+
+// ==================================================
+// SUMMARY RESULT FLEX
 // ==================================================
 
 function buildSummaryFlex(
@@ -21,7 +135,39 @@ function buildSummaryFlex(
   month,
   year
 ) {
+  return buildSummaryResultFlex(
+    summary,
+    `${month}/${year}`,
+    'ข้อมูลรวมของพนักงานทุกคน'
+  )
+}
 
+// ==================================================
+// DAILY SUMMARY RESULT FLEX
+// ==================================================
+
+function buildDailySummaryFlex(
+  summary,
+  day,
+  month,
+  year
+) {
+  return buildSummaryResultFlex(
+    summary,
+    `${day}/${month}/${year}`,
+    'ข้อมูลรวมของพนักงานทุกคนในวันที่เลือก'
+  )
+}
+
+// ==================================================
+// COMMON SUMMARY RESULT
+// ==================================================
+
+function buildSummaryResultFlex(
+  summary,
+  dateText,
+  noteText
+) {
   const count =
     Number(summary?.count || 0)
 
@@ -74,10 +220,6 @@ function buildSummaryFlex(
 
       contents: [
 
-        // ==============================================
-        // HEADER
-        // ==============================================
-
         {
           type: 'box',
 
@@ -100,7 +242,7 @@ function buildSummaryFlex(
             {
               type: 'text',
 
-              text: `${month}/${year}`,
+              text: dateText,
 
               size: 'sm',
 
@@ -117,10 +259,6 @@ function buildSummaryFlex(
 
           margin: 'lg'
         },
-
-        // ==============================================
-        // COUNT
-        // ==============================================
 
         {
           type: 'box',
@@ -160,10 +298,6 @@ function buildSummaryFlex(
           ]
         },
 
-        // ==============================================
-        // AMOUNT
-        // ==============================================
-
         {
           type: 'box',
 
@@ -202,10 +336,6 @@ function buildSummaryFlex(
           ]
         },
 
-        // ==============================================
-        // DISCOUNT
-        // ==============================================
-
         {
           type: 'box',
 
@@ -243,10 +373,6 @@ function buildSummaryFlex(
 
           ]
         },
-
-        // ==============================================
-        // DISCOUNT BY DOCTOR
-        // ==============================================
 
         {
           type: 'box',
@@ -290,10 +416,6 @@ function buildSummaryFlex(
           ]
         },
 
-        // ==============================================
-        // DOCTOR FEE
-        // ==============================================
-
         {
           type: 'box',
 
@@ -331,10 +453,6 @@ function buildSummaryFlex(
 
           ]
         },
-
-        // ==============================================
-        // HOSPITAL & NURSING
-        // ==============================================
 
         {
           type: 'box',
@@ -374,10 +492,6 @@ function buildSummaryFlex(
           ]
         },
 
-        // ==============================================
-        // OTHER
-        // ==============================================
-
         {
           type: 'box',
 
@@ -415,10 +529,6 @@ function buildSummaryFlex(
 
           ]
         },
-
-        // ==============================================
-        // TOTAL
-        // ==============================================
 
         {
           type: 'separator',
@@ -472,14 +582,10 @@ function buildSummaryFlex(
           ]
         },
 
-        // ==============================================
-        // NOTE
-        // ==============================================
-
         {
           type: 'text',
 
-          text: 'ข้อมูลรวมของพนักงานทุกคน',
+          text: noteText,
 
           size: 'xs',
 
@@ -494,10 +600,6 @@ function buildSummaryFlex(
 
       ]
     },
-
-    // ==================================================
-    // FOOTER
-    // ==================================================
 
     footer: {
       type: 'box',
@@ -539,11 +641,16 @@ function buildSummaryFlex(
         }
 
       ]
-
     }
   }
 }
 
+// ==================================================
+// EXPORT
+// ==================================================
+
 module.exports = {
-  buildSummaryFlex
+  buildSummaryFlex,
+  buildSummaryTypeFlex,
+  buildDailySummaryFlex
 }
