@@ -301,7 +301,7 @@ async function replyFlex(
 }
 
 // ==================================================
-// EMPLOYEE INPUT
+// EMPLOYEE INPUT TEXT
 // ==================================================
 
 function buildEmployeeInputText() {
@@ -309,13 +309,12 @@ function buildEmployeeInputText() {
   return (
     '🧾 ส่งเอกสาร\n\n' +
     'กรุณาพิมพ์รหัสพนักงานครับ\n\n' +
-    'ตัวอย่าง: A0001\n' +
-    'รองรับ A0001 - A2000'
+    'ตัวอย่าง: A0001'
   )
 }
 
 // ==================================================
-// DOCTOR INPUT
+// DOCTOR INPUT TEXT
 // ==================================================
 
 function buildDoctorInputText(
@@ -323,9 +322,23 @@ function buildDoctorInputText(
 ) {
 
   return (
-    '🩺 กรุณาพิมพ์ Doctor ID\n\n' +
     `👤 พนักงาน: ${employeeCode}\n\n` +
-    'ระบบจะตรวจสอบ Doctor ID กับข้อมูลใน Sheet4 ครับ'
+    '🩺 กรุณาพิมพ์ รหัสแพทย์ครับ'
+  )
+}
+
+// ==================================================
+// NEXT DOCTOR INPUT TEXT
+// ==================================================
+
+function buildNextDoctorInputText(
+  employeeCode
+) {
+
+  return (
+    '🧾 ใบเสร็จใบถัดไป\n\n' +
+    `👤 พนักงาน: ${employeeCode}\n\n` +
+    '🩺 กรุณาพิมพ์ รหัสแพทย์ใหม่ครับ'
   )
 }
 
@@ -438,7 +451,7 @@ function buildDoctorConfirmFlex(
             {
               type: 'text',
 
-              text: '🩺 Doctor ID',
+              text: '🩺 รหัสแพทย์',
 
               size: 'sm',
 
@@ -512,7 +525,7 @@ function buildDoctorConfirmFlex(
           type: 'text',
 
           text:
-            'ข้อมูลถูกต้องหรือไม่ครับ?',
+            'โปรดยืนยันข้อมูล',
 
           size: 'md',
 
@@ -565,7 +578,7 @@ function buildDoctorConfirmFlex(
 
             type: 'postback',
 
-            label: '✏️ แก้ไข Doctor ID',
+            label: '✏️ แก้ไข รหัสแพทย์',
 
             data:
               'document_confirm:no'
@@ -593,134 +606,26 @@ function buildDoctorConfirmFlex(
 }
 
 // ==================================================
-// WAITING IMAGE FLEX
+// READY FOR IMAGE TEXT
 // ==================================================
 
-function buildWaitingImageFlex(
+function buildReadyForImageText(
   state
 ) {
 
-  return {
+  return (
+    '📷 พร้อมรับใบเสร็จครับ\n\n' +
 
-    type: 'bubble',
+    `👤 พนักงาน: ${state.employeeCode}\n` +
 
-    size: 'mega',
+    `🩺 รหัสแพทย์: ${state.doctorID}\n` +
 
-    body: {
+    `👨‍⚕️ ${state.doctorName}\n\n` +
 
-      type: 'box',
+    'กรุณาส่งรูปใบเสร็จได้เลยครับ\n' +
 
-      layout: 'vertical',
-
-      paddingAll: '20px',
-
-      contents: [
-
-        {
-          type: 'text',
-
-          text: '📷 พร้อมรับใบเสร็จ',
-
-          weight: 'bold',
-
-          size: 'xl',
-
-          color: '#0369A1'
-        },
-
-        {
-          type: 'separator',
-
-          margin: 'lg'
-        },
-
-        {
-          type: 'text',
-
-          text:
-            `👤 พนักงาน: ${state.employeeCode}`,
-
-          size: 'sm',
-
-          margin: 'lg'
-        },
-
-        {
-          type: 'text',
-
-          text:
-            `🩺 Doctor ID: ${state.doctorID}`,
-
-          size: 'sm',
-
-          margin: 'sm'
-        },
-
-        {
-          type: 'text',
-
-          text:
-            `👨‍⚕️ ${state.doctorName}`,
-
-          size: 'sm',
-
-          weight: 'bold',
-
-          margin: 'sm',
-
-          wrap: true
-        },
-
-        {
-          type: 'text',
-
-          text:
-            'ส่งรูปใบเสร็จได้เลยครับ\nครั้งละ 1 รูป 🧾',
-
-          size: 'md',
-
-          color: '#0369A1',
-
-          weight: 'bold',
-
-          margin: 'xl',
-
-          align: 'center',
-
-          wrap: true
-        }
-
-      ]
-    },
-
-    footer: {
-
-      type: 'box',
-
-      layout: 'vertical',
-
-      spacing: 'sm',
-
-      contents: [
-
-        {
-          type: 'button',
-
-          style: 'secondary',
-
-          action: {
-
-            type: 'message',
-
-            label: '❌ จบการส่ง',
-
-            text: 'ยกเลิก'
-          }
-        }
-
-      ]
-    }
-  }
+    'ครั้งละ 1 รูป 🧾'
+  )
 }
 
 // ==================================================
@@ -783,7 +688,7 @@ function buildDocumentSuccessFlex(
           type: 'text',
 
           text:
-            `🩺 Doctor ID: ${doctorID}`,
+            `🩺 รหัสแพทย์: ${doctorID}`,
 
           size: 'sm',
 
@@ -1319,7 +1224,7 @@ async function handleDocumentText(
 
         event.replyToken,
 
-        '❌ กรุณาพิมพ์ Doctor ID ครับ'
+        '❌ กรุณาพิมพ์ รหัสแพทย์ครับ'
       )
 
       return true
@@ -1338,9 +1243,9 @@ async function handleDocumentText(
 
           event.replyToken,
 
-          '❌ ไม่พบ Doctor ID นี้ใน Sheet4\n\n' +
-          `Doctor ID: ${doctorID}\n\n` +
-          'กรุณาตรวจสอบแล้วพิมพ์ Doctor ID ใหม่ครับ'
+          '❌ ไม่พบ รหัสแพทย์ นี้ในระบบ\n\n' +
+          `รหัสแพทย์: ${doctorID}\n\n` +
+          'กรุณาตรวจสอบแล้วพิมพ์ รหัสแพทย์ ใหม่ครับ'
         )
 
         state.waitingSince =
@@ -1389,7 +1294,7 @@ async function handleDocumentText(
 
         event.replyToken,
 
-        '⚠️ ระบบไม่สามารถตรวจสอบ Doctor ID จาก Sheet4 ได้ครับ\n\n' +
+        '⚠️ ระบบไม่สามารถตรวจสอบ รหัสแพทย์ จากระบบได้ครับ\n\n' +
         'กรุณาลองใหม่อีกครั้ง'
       )
     }
@@ -1455,9 +1360,9 @@ async function handleDocumentText(
 
         event.replyToken,
 
-        '🩺 ส่งใบเสร็จใบถัดไป\n\n' +
-        `👤 พนักงาน: ${state.employeeCode}\n\n` +
-        'กรุณาพิมพ์ Doctor ID ใหม่ครับ'
+        buildNextDoctorInputText(
+          state.employeeCode
+        )
       )
 
       return true
@@ -1530,13 +1435,11 @@ async function handleDocumentPostback(
     state.waitingSince =
       Date.now()
 
-    await context.replyFlex(
+    await context.reply(
 
       event.replyToken,
 
-      '📷 พร้อมรับใบเสร็จ',
-
-      buildWaitingImageFlex(
+      buildReadyForImageText(
         state
       )
     )
@@ -1600,7 +1503,8 @@ async function handleDocumentImage(
 
       event.replyToken,
 
-      '❌ ไม่พบ message ID ของรูปจาก LINE ครับ\nกรุณาส่งรูปใหม่อีกครั้ง'
+      '❌ ไม่พบ message ID ของรูปจาก LINE ครับ\n\n' +
+      'กรุณาส่งรูปใหม่อีกครั้ง'
     )
 
     return true
@@ -1619,7 +1523,7 @@ async function handleDocumentImage(
       event.replyToken,
 
       '❌ ยังไม่พร้อมรับรูปครับ\n\n' +
-      'กรุณากรอกรหัสพนักงาน → Doctor ID → ยืนยันข้อมูลแพทย์ก่อนครับ'
+      'กรุณากรอกรหัสพนักงาน → รหัสแพทย์ → ยืนยันข้อมูลแพทย์ก่อนครับ'
     )
 
     return true
@@ -1789,10 +1693,6 @@ async function handleDocumentImage(
     state.waitingSince =
       Date.now()
 
-    // สำคัญ:
-    // หลังบันทึกสำเร็จยังอยู่ใน waitingImage
-    // แต่เมื่อกด "ส่งรูปถัดไป"
-    // จะเปลี่ยนไปถาม Doctor ID ใหม่
     state.step =
       'waitingImage'
 
@@ -1856,8 +1756,6 @@ module.exports = {
   handleDocumentImage,
 
   buildDoctorConfirmFlex,
-
-  buildWaitingImageFlex,
 
   buildDocumentSuccessFlex
 }
