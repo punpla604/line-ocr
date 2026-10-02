@@ -20,6 +20,66 @@ const MAX_RESULT = 10
 
 
 // ==================================================
+// DEBUG
+// ==================================================
+
+const DEBUG_SEARCH =
+  String(
+    process.env.DEBUG_SEARCH ?? 'true'
+  ).toLowerCase() === 'true'
+
+
+function debugLog(label, data) {
+
+  if (!DEBUG_SEARCH) {
+    return
+  }
+
+  console.log(
+    `[SEARCH DEBUG] ${label}`,
+    data
+  )
+}
+
+
+function debugRow(row, index) {
+
+  if (!DEBUG_SEARCH) {
+    return
+  }
+
+  console.log(
+    '[SEARCH DEBUG] ROW',
+    {
+      sheetRow:
+        index + DATA_START_ROW,
+
+      employeeCode:
+        row.employeeCode,
+
+      dateText:
+        row.dateText,
+
+      bn:
+        row.bn,
+
+      hn:
+        row.hn,
+
+      name:
+        row.name,
+
+      doctorID:
+        row.doctorID,
+
+      doctorName:
+        row.doctorName
+    }
+  )
+}
+
+
+// ==================================================
 // GOOGLE AUTH
 // ==================================================
 
@@ -73,17 +133,21 @@ function getGoogleAuth() {
   }
 
   return new google.auth.GoogleAuth({
+
     credentials: {
+
       client_email:
         GOOGLE_SERVICE_ACCOUNT_EMAIL,
 
       private_key:
         privateKey
+
     },
 
     scopes: [
       'https://www.googleapis.com/auth/spreadsheets'
     ]
+
   })
 }
 
@@ -113,6 +177,20 @@ async function readSheet() {
   const sheets =
     getSheets()
 
+  debugLog(
+    'READ SHEET START',
+    {
+      spreadsheetId:
+        SHEET_ID,
+
+      sheet:
+        SHEET_NAME,
+
+      range:
+        `${SHEET_NAME}!A:T`
+    }
+  )
+
   const response =
     await sheets.spreadsheets.values.get({
 
@@ -127,7 +205,24 @@ async function readSheet() {
 
     })
 
-  return response.data.values || []
+  const values =
+    response.data.values || []
+
+  debugLog(
+    'READ SHEET RESULT',
+    {
+      rowCount:
+        values.length,
+
+      header:
+        values[0] || [],
+
+      firstDataRow:
+        values[1] || []
+    }
+  )
+
+  return values
 }
 
 
@@ -164,6 +259,14 @@ function getColumnMap(header) {
     }
   )
 
+  debugLog(
+    'COLUMN MAP',
+    {
+      header,
+      map
+    }
+  )
+
   return map
 }
 
@@ -172,7 +275,11 @@ function getColumnMap(header) {
 // GET COLUMN
 // ==================================================
 
-function getColumn(row, map, names) {
+function getColumn(
+  row,
+  map,
+  names
+) {
 
   for (
     let i = 0;
@@ -213,6 +320,12 @@ async function readRows() {
   if (
     !allRows.length
   ) {
+
+    debugLog(
+      'NO SHEET DATA',
+      {}
+    )
+
     return []
   }
 
@@ -232,18 +345,44 @@ async function readRows() {
     map
   )
 
+
+  // ==================================================
+  // IMPORTANT:
+  // DATA_START_ROW = 2
+  // allRows[0] = header
+  // ดังนั้น slice(1) ถูกต้อง
+  // ==================================================
+
   const dataRows =
     allRows.slice(
       DATA_START_ROW - 1
     )
 
-  return dataRows.map(
-    function (row) {
 
-      return rowToObject(
-        row,
-        map
+  debugLog(
+    'DATA ROW COUNT',
+    {
+      totalRows:
+        dataRows.length
+    }
+  )
+
+
+  return dataRows.map(
+    function (row, index) {
+
+      const result =
+        rowToObject(
+          row,
+          map
+        )
+
+      debugRow(
+        result,
+        index
       )
+
+      return result
 
     }
   )
@@ -254,7 +393,10 @@ async function readRows() {
 // ROW -> OBJECT
 // ==================================================
 
-function rowToObject(row, map) {
+function rowToObject(
+  row,
+  map
+) {
 
   return {
 
@@ -273,7 +415,8 @@ function rowToObject(row, map) {
         map,
         [
           'employeeCode',
-          'employee code'
+          'employee code',
+          'employee_code'
         ]
       ).toUpperCase(),
 
@@ -286,7 +429,9 @@ function rowToObject(row, map) {
           'doctorId',
           'doctor id',
           'doctorCode',
-          'doctor code'
+          'doctor code',
+          'doctor_code',
+          'รหัสแพทย์'
         ]
       ),
 
@@ -296,7 +441,10 @@ function rowToObject(row, map) {
         map,
         [
           'doctorName',
-          'doctor name'
+          'doctor name',
+          'doctor',
+          'แพทย์',
+          'ชื่อแพทย์'
         ]
       ),
 
@@ -307,7 +455,9 @@ function rowToObject(row, map) {
         [
           'bn',
           'receiptNo',
-          'receipt no'
+          'receipt no',
+          'receipt',
+          'เลขที่ใบเสร็จ'
         ]
       ),
 
@@ -319,7 +469,8 @@ function rowToObject(row, map) {
           'dateText',
           'date',
           'receiptDate',
-          'receipt date'
+          'receipt date',
+          'วันที่'
         ]
       ),
 
@@ -349,7 +500,9 @@ function rowToObject(row, map) {
         [
           'name',
           'patientName',
-          'patient name'
+          'patient name',
+          'ชื่อคนไข้',
+          'ชื่อผู้ป่วย'
         ]
       ),
 
@@ -492,7 +645,29 @@ async function getFilteredRows(
     String(year || '')
       .trim()
 
+
+  debugLog(
+    'FILTER TARGET',
+    {
+      employeeCode,
+      targetEmployee,
+      month,
+      targetMonth,
+      year,
+      targetYear,
+      totalRows:
+        rows.length
+    }
+  )
+
+
   const result = []
+
+  let employeeMatched = 0
+  let invalidDate = 0
+  let monthMatched = 0
+  let yearMatched = 0
+
 
   for (
     let i = 0;
@@ -503,14 +678,30 @@ async function getFilteredRows(
     const r =
       rows[i]
 
-    if (
+
+    // ==================================================
+    // EMPLOYEE
+    // ==================================================
+
+    const rowEmployee =
       normalizeSearch(
         r.employeeCode
-      ) !==
+      )
+
+    if (
+      rowEmployee !==
       targetEmployee
     ) {
+
       continue
     }
+
+    employeeMatched++
+
+
+    // ==================================================
+    // DATE PARSE
+    // ==================================================
 
     const parsedDate =
       parseSheetDate(
@@ -519,45 +710,90 @@ async function getFilteredRows(
 
     if (!parsedDate) {
 
+      invalidDate++
+
       console.log(
-        'INVALID DATE:',
+        '[SEARCH DEBUG] INVALID DATE',
         {
-          row: i + DATA_START_ROW,
-          raw:
+          sheetRow:
+            i + DATA_START_ROW,
+
+          employeeCode:
+            r.employeeCode,
+
+          rawDate:
             r.dateText,
+
           bn:
-            r.bn
+            r.bn,
+
+          doctorID:
+            r.doctorID,
+
+          doctorName:
+            r.doctorName
         }
       )
 
       continue
     }
 
+
+    // ==================================================
+    // DATE PARSED
+    // ==================================================
+
+    debugLog(
+      'DATE PARSED',
+      {
+        sheetRow:
+          i + DATA_START_ROW,
+
+        raw:
+          r.dateText,
+
+        parsed:
+          parsedDate
+      }
+    )
+
+
     if (
       parsedDate.month !==
       targetMonth
     ) {
+
       continue
     }
+
+    monthMatched++
+
 
     if (
       parsedDate.year !==
       targetYear
     ) {
+
       continue
     }
 
+    yearMatched++
+
+
     result.push({
+
       ...r,
 
       _date:
         parsedDate
+
     })
 
   }
 
+
   console.log(
-    'FILTER RESULT:',
+    '[SEARCH DEBUG] FILTER SUMMARY',
     {
       employeeCode:
         targetEmployee,
@@ -568,10 +804,62 @@ async function getFilteredRows(
       year:
         targetYear,
 
-      count:
+      totalRows:
+        rows.length,
+
+      employeeMatched,
+
+      invalidDate,
+
+      monthMatched,
+
+      yearMatched,
+
+      resultCount:
         result.length
     }
   )
+
+
+  if (
+    result.length > 0
+  ) {
+
+    console.log(
+      '[SEARCH DEBUG] FILTER SAMPLE',
+      result
+        .slice(0, 5)
+        .map(
+          function (r) {
+
+            return {
+
+              employeeCode:
+                r.employeeCode,
+
+              dateText:
+                r.dateText,
+
+              parsedDate:
+                r._date,
+
+              bn:
+                r.bn,
+
+              doctorID:
+                r.doctorID,
+
+              doctorName:
+                r.doctorName
+
+            }
+
+          }
+        )
+    )
+
+  }
+
 
   return result
 }
@@ -593,7 +881,8 @@ function formatResult(r) {
       r.doctorName
     )
 
-  return {
+
+  const result = {
 
     bn:
       cleanText(r.bn),
@@ -679,6 +968,30 @@ function formatResult(r) {
       )
 
   }
+
+
+  debugLog(
+    'FORMAT RESULT',
+    {
+      bn:
+        result.bn,
+
+      doctorID:
+        result.doctorID,
+
+      doctorName:
+        result.doctorName,
+
+      dateText:
+        result.dateText,
+
+      dateShort:
+        result.dateShort
+    }
+  )
+
+
+  return result
 }
 
 
@@ -692,6 +1005,16 @@ async function findByBN({
   year,
   bn
 }) {
+
+  console.log(
+    '[SEARCH DEBUG] FIND BY BN INPUT',
+    {
+      employeeCode,
+      month,
+      year,
+      bn
+    }
+  )
 
   if (!bn) {
     throw new Error(
@@ -729,22 +1052,28 @@ async function findByBN({
       .map(formatResult)
 
   console.log(
-    'FIND BN:',
+    '[SEARCH DEBUG] FIND BN RESULT',
     {
-      bn,
+      target,
+      filtered:
+        rows.length,
       matched:
         matched.length,
-
       result:
         list.map(
           function (x) {
 
             return {
+
+              bn:
+                x.bn,
+
               doctorID:
                 x.doctorID,
 
               doctorName:
                 x.doctorName
+
             }
 
           }
@@ -778,6 +1107,16 @@ async function findByHN({
   year,
   hn
 }) {
+
+  console.log(
+    '[SEARCH DEBUG] FIND BY HN INPUT',
+    {
+      employeeCode,
+      month,
+      year,
+      hn
+    }
+  )
 
   if (!hn) {
     throw new Error(
@@ -827,6 +1166,17 @@ async function findByHN({
 
   }
 
+  console.log(
+    '[SEARCH DEBUG] FIND HN RESULT',
+    {
+      target,
+      filtered:
+        rows.length,
+      result:
+        list.length
+    }
+  )
+
   return {
 
     ok: true,
@@ -853,6 +1203,16 @@ async function findByName({
   year,
   name
 }) {
+
+  console.log(
+    '[SEARCH DEBUG] FIND BY NAME INPUT',
+    {
+      employeeCode,
+      month,
+      year,
+      name
+    }
+  )
 
   if (!name) {
     throw new Error(
@@ -888,6 +1248,19 @@ async function findByName({
       .slice(0, MAX_RESULT)
       .map(formatResult)
 
+  console.log(
+    '[SEARCH DEBUG] FIND NAME RESULT',
+    {
+      target,
+      filtered:
+        rows.length,
+      matched:
+        matched.length,
+      result:
+        list.length
+    }
+  )
+
   return {
 
     ok: true,
@@ -915,14 +1288,38 @@ async function findByDate({
   date
 }) {
 
+  console.log(
+    '[SEARCH DEBUG] FIND BY DATE INPUT',
+    {
+      employeeCode,
+      month,
+      year,
+      date
+    }
+  )
+
+
   if (!date) {
     throw new Error(
       'date is required'
     )
   }
 
+
   const day =
     extractDay(date)
+
+
+  console.log(
+    '[SEARCH DEBUG] EXTRACT DAY',
+    {
+      input:
+        date,
+
+      day
+    }
+  )
+
 
   if (!day) {
     throw new Error(
@@ -930,14 +1327,17 @@ async function findByDate({
     )
   }
 
+
   const targetMonth =
     String(month || '')
       .trim()
       .padStart(2, '0')
 
+
   const targetYear =
     String(year || '')
       .trim()
+
 
   const rows =
     await getFilteredRows(
@@ -946,8 +1346,9 @@ async function findByDate({
       targetYear
     )
 
+
   console.log(
-    'SEARCH DATE:',
+    '[SEARCH DEBUG] SEARCH DATE',
     {
       employeeCode,
       month:
@@ -960,6 +1361,7 @@ async function findByDate({
     }
   )
 
+
   const matched =
     rows.filter(
       function (r) {
@@ -968,13 +1370,15 @@ async function findByDate({
           return false
         }
 
+
         const same =
           r._date.day === day
+
 
         if (same) {
 
           console.log(
-            'DATE MATCH:',
+            '[SEARCH DEBUG] DATE MATCH',
             {
               bn:
                 r.bn,
@@ -995,17 +1399,21 @@ async function findByDate({
 
         }
 
+
         return same
+
       }
     )
+
 
   const list =
     matched
       .slice(0, MAX_RESULT)
       .map(formatResult)
 
+
   console.log(
-    'SEARCH DATE RESULT:',
+    '[SEARCH DEBUG] SEARCH DATE RESULT',
     {
       target:
         `${day}/${targetMonth}/${targetYear}`,
@@ -1014,9 +1422,37 @@ async function findByDate({
         rows.length,
 
       matched:
-        matched.length
+        matched.length,
+
+      returned:
+        list.length,
+
+      results:
+        list.map(
+          function (x) {
+
+            return {
+
+              bn:
+                x.bn,
+
+              date:
+                x.dateText,
+
+              doctorID:
+                x.doctorID,
+
+              doctorName:
+                x.doctorName
+
+            }
+
+          }
+        )
+
     }
   )
+
 
   return {
 
@@ -1086,6 +1522,7 @@ function extractDay(value) {
     return ''
   }
 
+
   if (
     /^\d{1,2}$/.test(s)
   ) {
@@ -1104,10 +1541,12 @@ function extractDay(value) {
       .padStart(2, '0')
   }
 
+
   let match =
     s.match(
       /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
     )
+
 
   if (match) {
 
@@ -1117,13 +1556,16 @@ function extractDay(value) {
         10
       )
     ).padStart(2, '0')
+
   }
+
 
   match =
     s.match(
       /^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/i
     )
 
+
   if (match) {
 
     return String(
@@ -1132,12 +1574,15 @@ function extractDay(value) {
         10
       )
     ).padStart(2, '0')
+
   }
+
 
   match =
     s.match(
       /^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/i
     )
+
 
   if (match) {
 
@@ -1147,10 +1592,13 @@ function extractDay(value) {
         10
       )
     ).padStart(2, '0')
+
   }
+
 
   const parsed =
     parseSheetDate(s)
+
 
   return parsed
     ? parsed.day
@@ -1181,6 +1629,7 @@ function parseSheetDate(value) {
       /^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/
     )
 
+
   if (match) {
 
     return makeDateInfo(
@@ -1188,6 +1637,7 @@ function parseSheetDate(value) {
       match[2],
       match[3]
     )
+
   }
 
 
@@ -1200,6 +1650,7 @@ function parseSheetDate(value) {
       /^(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{4})$/
     )
 
+
   if (match) {
 
     return makeDateInfo(
@@ -1207,18 +1658,19 @@ function parseSheetDate(value) {
       match[2],
       match[3]
     )
+
   }
 
 
   // ==================================================
   // DD Month YYYY
-  // 31 August 2026
   // ==================================================
 
   match =
     s.match(
       /^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/i
     )
+
 
   if (match) {
 
@@ -1236,18 +1688,19 @@ function parseSheetDate(value) {
       month,
       match[3]
     )
+
   }
 
 
   // ==================================================
   // Month DD YYYY
-  // August 31 2026
   // ==================================================
 
   match =
     s.match(
       /^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/i
     )
+
 
   if (match) {
 
@@ -1265,6 +1718,7 @@ function parseSheetDate(value) {
       month,
       match[3]
     )
+
   }
 
 
@@ -1277,6 +1731,7 @@ function parseSheetDate(value) {
       /^(\d{4})-(\d{1,2})-(\d{1,2})$/
     )
 
+
   if (match) {
 
     return makeDateInfo(
@@ -1284,6 +1739,7 @@ function parseSheetDate(value) {
       match[2],
       match[1]
     )
+
   }
 
 
@@ -1322,7 +1778,9 @@ function parseSheetDate(value) {
         date.getUTCMonth() + 1,
         date.getUTCFullYear()
       )
+
     }
+
   }
 
 
@@ -1332,6 +1790,7 @@ function parseSheetDate(value) {
 
   const parsed =
     new Date(s)
+
 
   if (
     !isNaN(
@@ -1344,7 +1803,9 @@ function parseSheetDate(value) {
       parsed.getMonth() + 1,
       parsed.getFullYear()
     )
+
   }
+
 
   return null
 }
@@ -1369,6 +1830,7 @@ function makeDateInfo(
   const y =
     parseInt(year, 10)
 
+
   if (
     !d ||
     !m ||
@@ -1381,12 +1843,14 @@ function makeDateInfo(
     return null
   }
 
+
   const test =
     new Date(
       y,
       m - 1,
       d
     )
+
 
   if (
     test.getFullYear() !== y ||
@@ -1395,6 +1859,7 @@ function makeDateInfo(
   ) {
     return null
   }
+
 
   return {
 
@@ -1480,6 +1945,7 @@ function getMonthNumber(
     dec: 12
 
   }
+
 
   return (
     months[
