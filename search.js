@@ -106,6 +106,29 @@ function getSheets() {
 
 // ==================================================
 // CONVERT DATA TO SHEET ROW
+//
+// SHEET COLUMNS
+//
+// A  timestamp
+// B  employeeCode
+// C  doctorID
+// D  doctorName
+// E  bn
+// F  dateText
+// G  timeText
+// H  hn
+// I  name
+// J  paymentType
+// K  vat
+// L  Amount
+// M  Discount
+// N  Discount By Doctor
+// O  total
+// P  doctorFee
+// Q  hospital&nursing
+// R  other
+// S  itemJson
+// T  raw
 // ==================================================
 
 function toSheetRow(data) {
@@ -117,38 +140,87 @@ function toSheetRow(data) {
 
   return [
 
+    // A
     data.timestamp ||
       new Date().toISOString(),
 
+    // B
     data.employeeCode || '',
 
+    // C
+    data.doctorID ||
+      data.doctorId ||
+      '',
+
+    // D
+    data.doctorName ||
+      '',
+
+    // E
     data.bn ||
       data.receiptNo ||
       '',
 
-    data.receiptDateRaw || '',
+    // F
+    data.receiptDateRaw ||
+      data.dateText ||
+      '',
 
-    data.timeText || '',
+    // G
+    data.timeText ||
+      '',
 
-    data.hn || '',
+    // H
+    data.hn ||
+      '',
 
-    data.patientName || '',
+    // I
+    data.patientName ||
+      data.name ||
+      '',
 
-    data.paymentType || '',
+    // J
+    data.paymentType ||
+      '',
 
-    data.vat || '',
+    // K
+    data.vat ||
+      '',
 
-    data.total || '',
+    // L
+    data.amount ||
+      '',
 
-    data.doctorFee || '',
+    // M
+    data.discount ||
+      '',
 
-    data.hospitalNursing || '',
+    // N
+    data.discountByDoctor ||
+      '',
 
-    data.other || '',
+    // O
+    data.total ||
+      '',
 
+    // P
+    data.doctorFee ||
+      '',
+
+    // Q
+    data.hospitalNursing ||
+      '',
+
+    // R
+    data.other ||
+      '',
+
+    // S
     itemsJson,
 
-    data.raw || ''
+    // T
+    data.raw ||
+      ''
 
   ]
 }
@@ -207,8 +279,9 @@ async function saveReceipt(data) {
         spreadsheetId:
           SHEET_ID,
 
+        // A:T เพราะมี 20 columns
         range:
-          `${SHEET_NAME}!A:O`,
+          `${SHEET_NAME}!A:T`,
 
         valueInputOption:
           'USER_ENTERED',
@@ -287,8 +360,9 @@ async function readRows() {
       spreadsheetId:
         SHEET_ID,
 
+      // A:T เพราะโครงสร้างใหม่มี 20 columns
       range:
-        `${SHEET_NAME}!A${DATA_START_ROW}:O`
+        `${SHEET_NAME}!A${DATA_START_ROW}:T`
 
     })
 
@@ -298,57 +372,113 @@ async function readRows() {
 
 // ==================================================
 // ROW -> OBJECT
+//
+// A  timestamp
+// B  employeeCode
+// C  doctorID
+// D  doctorName
+// E  bn
+// F  dateText
+// G  timeText
+// H  hn
+// I  name
+// J  paymentType
+// K  vat
+// L  amount
+// M  discount
+// N  discountByDoctor
+// O  total
+// P  doctorFee
+// Q  hospitalNursing
+// R  other
+// S  items
+// T  raw
 // ==================================================
 
 function rowToObject(r) {
 
   return {
 
+    // A
     timestamp:
       r[0] || '',
 
+    // B
     employeeCode:
       cleanText(r[1])
         .toUpperCase(),
 
-    bn:
+    // C
+    doctorID:
       cleanText(r[2]),
 
-    dateText:
-      r[3] || '',
+    // D
+    doctorName:
+      cleanText(r[3]),
 
-    timeText:
+    // E
+    bn:
       cleanText(r[4]),
 
-    hn:
-      cleanText(r[5]),
+    // F
+    dateText:
+      r[5] || '',
 
-    name:
+    // G
+    timeText:
       cleanText(r[6]),
 
-    paymentType:
+    // H
+    hn:
       cleanText(r[7]),
 
-    vat:
+    // I
+    name:
       cleanText(r[8]),
 
-    total:
+    // J
+    paymentType:
       cleanText(r[9]),
 
-    doctorFee:
+    // K
+    vat:
       cleanText(r[10]),
 
-    hospitalNursing:
+    // L
+    amount:
       cleanText(r[11]),
 
-    other:
+    // M
+    discount:
       cleanText(r[12]),
 
-    items:
-      safeParseJson(r[13]),
+    // N
+    discountByDoctor:
+      cleanText(r[13]),
 
+    // O
+    total:
+      cleanText(r[14]),
+
+    // P
+    doctorFee:
+      cleanText(r[15]),
+
+    // Q
+    hospitalNursing:
+      cleanText(r[16]),
+
+    // R
+    other:
+      cleanText(r[17]),
+
+    // S
+    items:
+      safeParseJson(r[18]),
+
+    // T
     raw:
-      cleanText(r[14])
+      cleanText(r[19])
 
   }
 }
@@ -376,6 +506,7 @@ async function getFilteredRows(
   const normalizedMonth =
     String(month || '')
       .trim()
+      .padStart(2, '0')
 
   const normalizedYear =
     String(year || '')
@@ -408,11 +539,17 @@ async function getFilteredRows(
       const parts =
         shortDate.split('/')
 
-      if (parts[1] !== normalizedMonth) {
+      if (
+        parts[1] !==
+        normalizedMonth
+      ) {
         return false
       }
 
-      if (parts[2] !== normalizedYear) {
+      if (
+        parts[2] !==
+        normalizedYear
+      ) {
         return false
       }
 
@@ -429,14 +566,36 @@ function formatResult(r) {
 
   return {
 
+    // ==================================================
+    // DOCUMENT
+    // ==================================================
+
     bn:
       cleanText(r.bn),
+
+    // ==================================================
+    // DOCTOR
+    // ==================================================
+
+    doctorID:
+      cleanText(r.doctorID),
+
+    doctorName:
+      cleanText(r.doctorName),
+
+    // ==================================================
+    // PATIENT
+    // ==================================================
 
     hn:
       cleanText(r.hn),
 
     name:
       cleanText(r.name),
+
+    // ==================================================
+    // DATE / TIME
+    // ==================================================
 
     dateText:
       r.dateText || '',
@@ -449,11 +608,30 @@ function formatResult(r) {
     timeText:
       cleanText(r.timeText),
 
+    // ==================================================
+    // PAYMENT
+    // ==================================================
+
     paymentType:
       cleanText(r.paymentType),
 
     vat:
       cleanText(r.vat),
+
+    // ==================================================
+    // FINANCIAL
+    // ==================================================
+
+    amount:
+      formatNumber(r.amount),
+
+    discount:
+      formatNumber(r.discount),
+
+    discountByDoctor:
+      formatNumber(
+        r.discountByDoctor
+      ),
 
     total:
       formatNumber(r.total),
@@ -469,8 +647,16 @@ function formatResult(r) {
     other:
       formatNumber(r.other),
 
+    // ==================================================
+    // ITEMS
+    // ==================================================
+
     items:
       r.items || [],
+
+    // ==================================================
+    // EMPLOYEE
+    // ==================================================
 
     employeeCode:
       cleanText(
@@ -693,11 +879,6 @@ async function findByDate({
     )
   }
 
-  // ==================================================
-  // รับเฉพาะ "วันที่" เช่น 01, 15, 31
-  // เดือนและปีมาจาก search_month / search_year
-  // ==================================================
-
   const day =
     String(date)
       .trim()
@@ -718,20 +899,12 @@ async function findByDate({
   const targetYear =
     String(year)
 
-  // ==================================================
-  // ดึงข้อมูลเฉพาะเดือน/ปีที่เลือก
-  // ==================================================
-
   const filteredRows =
     await getFilteredRows(
       employeeCode,
       targetMonth,
       targetYear
     )
-
-  // ==================================================
-  // เทียบเฉพาะ "วัน"
-  // ==================================================
 
   const matchedRows =
     filteredRows.filter(
@@ -802,10 +975,6 @@ async function countByDateReceipt({
     )
   }
 
-  // ==================================================
-  // รับเฉพาะวันที่ เช่น 01
-  // ==================================================
-
   const day =
     String(date)
       .trim()
@@ -826,20 +995,12 @@ async function countByDateReceipt({
   const targetYear =
     String(year)
 
-  // ==================================================
-  // ดึงข้อมูลเดือน/ปี
-  // ==================================================
-
   const filteredRows =
     await getFilteredRows(
       employeeCode,
       targetMonth,
       targetYear
     )
-
-  // ==================================================
-  // เทียบเฉพาะวัน
-  // ==================================================
 
   const matchedRows =
     filteredRows.filter(
