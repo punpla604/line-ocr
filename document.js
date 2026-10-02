@@ -186,6 +186,15 @@ async function reply(
     )
   }
 
+  if (
+    typeof replyToken !== 'string' ||
+    !replyToken.trim()
+  ) {
+    throw new Error(
+      `Invalid LINE replyToken: ${typeof replyToken}`
+    )
+  }
+
   return axios.post(
     'https://api.line.me/v2/bot/message/reply',
 
@@ -223,6 +232,15 @@ async function replyFlex(
   if (!LINE_TOKEN) {
     throw new Error(
       'Missing env: LINE_TOKEN'
+    )
+  }
+
+  if (
+    typeof replyToken !== 'string' ||
+    !replyToken.trim()
+  ) {
+    throw new Error(
+      `Invalid LINE replyToken: ${typeof replyToken}`
     )
   }
 
@@ -1347,8 +1365,10 @@ async function findDoctor(
 // ==================================================
 
 async function startDocument(
-  replyToken,
-  state
+  event,
+  userId,
+  state,
+  context
 ) {
 
   state.mode =
@@ -1369,8 +1389,8 @@ async function startDocument(
   state.waitingSince =
     Date.now()
 
-  await replyFlex(
-    replyToken,
+  await context.replyFlex(
+    event.replyToken,
 
     '🧾 ส่งเอกสาร',
 
@@ -1383,10 +1403,11 @@ async function startDocument(
 // ==================================================
 
 async function handleDocumentText(
-  replyToken,
+  event,
   userId,
   state,
-  text
+  text,
+  context
 ) {
 
   const value =
@@ -1412,9 +1433,9 @@ async function handleDocumentText(
       )
     ) {
 
-      await replyFlex(
+      await context.replyFlex(
 
-        replyToken,
+        event.replyToken,
 
         '❌ รหัสพนักงานไม่ถูกต้อง',
 
@@ -1441,9 +1462,9 @@ async function handleDocumentText(
     state.waitingSince =
       Date.now()
 
-    await replyFlex(
+    await context.replyFlex(
 
-      replyToken,
+      event.replyToken,
 
       '🩺 กรุณาใส่ Doctor ID',
 
@@ -1471,9 +1492,9 @@ async function handleDocumentText(
 
     if (!doctorID) {
 
-      await replyFlex(
+      await context.replyFlex(
 
-        replyToken,
+        event.replyToken,
 
         '❌ กรุณาใส่ Doctor ID',
 
@@ -1494,9 +1515,9 @@ async function handleDocumentText(
 
       if (!doctor) {
 
-        await replyFlex(
+        await context.replyFlex(
 
-          replyToken,
+          event.replyToken,
 
           '❌ ไม่พบรหัสแพทย์',
 
@@ -1637,9 +1658,9 @@ async function handleDocumentText(
       state.waitingSince =
         Date.now()
 
-      await replyFlex(
+      await context.replyFlex(
 
-        replyToken,
+        event.replyToken,
 
         '🩺 กรุณายืนยันข้อมูลแพทย์',
 
@@ -1661,9 +1682,9 @@ async function handleDocumentText(
         error.message
       )
 
-      await replyFlex(
+      await context.replyFlex(
 
-        replyToken,
+        event.replyToken,
 
         '⚠️ ตรวจสอบ Doctor ID ไม่สำเร็จ',
 
@@ -1685,9 +1706,9 @@ async function handleDocumentText(
     'confirmDoctor'
   ) {
 
-    await replyFlex(
+    await context.replyFlex(
 
-      replyToken,
+      event.replyToken,
 
       'กรุณากดยืนยันข้อมูลแพทย์',
 
@@ -1721,9 +1742,9 @@ async function handleDocumentText(
       state.waitingSince =
         Date.now()
 
-      await replyFlex(
+      await context.replyFlex(
 
-        replyToken,
+        event.replyToken,
 
         '📷 พร้อมรับรูปถัดไป',
 
@@ -1735,9 +1756,9 @@ async function handleDocumentText(
       return true
     }
 
-    await replyFlex(
+    await context.replyFlex(
 
-      replyToken,
+      event.replyToken,
 
       '📷 รอรูปใบเสร็จ',
 
@@ -1757,10 +1778,10 @@ async function handleDocumentText(
 // ==================================================
 
 async function handleDocumentPostback(
-  replyToken,
+  event,
   userId,
   state,
-  data
+  context
 ) {
 
   if (
@@ -1768,6 +1789,11 @@ async function handleDocumentPostback(
   ) {
     return false
   }
+
+  const data =
+    String(
+      event.postback?.data || ''
+    ).trim()
 
   // ==================================================
   // CONFIRM
@@ -1784,9 +1810,9 @@ async function handleDocumentPostback(
       !state.doctorName
     ) {
 
-      await replyFlex(
+      await context.replyFlex(
 
-        replyToken,
+        event.replyToken,
 
         '❌ ข้อมูลไม่ครบ',
 
@@ -1804,9 +1830,9 @@ async function handleDocumentPostback(
     state.waitingSince =
       Date.now()
 
-    await replyFlex(
+    await context.replyFlex(
 
-      replyToken,
+      event.replyToken,
 
       '📷 พร้อมรับใบเสร็จ',
 
@@ -1839,9 +1865,9 @@ async function handleDocumentPostback(
     state.waitingSince =
       Date.now()
 
-    await replyFlex(
+    await context.replyFlex(
 
-      replyToken,
+      event.replyToken,
 
       '✏️ แก้ไข Doctor ID',
 
@@ -1861,11 +1887,30 @@ async function handleDocumentPostback(
 // ==================================================
 
 async function handleDocumentImage(
-  replyToken,
+  event,
   userId,
   state,
-  messageId
+  context
 ) {
+
+  const messageId =
+    event.message?.id
+
+  if (!messageId) {
+
+    await context.replyFlex(
+
+      event.replyToken,
+
+      '❌ ไม่พบรูป',
+
+      buildImageErrorFlex(
+        'ไม่พบ message ID ของรูปจาก LINE ครับ\nกรุณาส่งรูปใหม่อีกครั้ง'
+      )
+    )
+
+    return true
+  }
 
   if (
     state.mode !== 'upload' ||
@@ -1875,9 +1920,9 @@ async function handleDocumentImage(
     !state.doctorName
   ) {
 
-    await replyFlex(
+    await context.replyFlex(
 
-      replyToken,
+      event.replyToken,
 
       '❌ ยังไม่พร้อมรับรูป',
 
@@ -1910,9 +1955,9 @@ async function handleDocumentImage(
     state.doctorName =
       ''
 
-    await replyFlex(
+    await context.replyFlex(
 
-      replyToken,
+      event.replyToken,
 
       '⏱️ หมดเวลา',
 
@@ -1964,9 +2009,9 @@ async function handleDocumentImage(
 
     if (!ocrText) {
 
-      await replyFlex(
+      await context.replyFlex(
 
-        replyToken,
+        event.replyToken,
 
         '❌ อ่านใบเสร็จไม่ได้',
 
@@ -1997,9 +2042,9 @@ async function handleDocumentImage(
 
     if (!isReceipt) {
 
-      await replyFlex(
+      await context.replyFlex(
 
-        replyToken,
+        event.replyToken,
 
         '❌ รูปไม่ใช่ใบเสร็จ',
 
@@ -2070,9 +2115,9 @@ async function handleDocumentImage(
     // SUCCESS FLEX
     // ==================================================
 
-    await replyFlex(
+    await context.replyFlex(
 
-      replyToken,
+      event.replyToken,
 
       '✅ บันทึกใบเสร็จเรียบร้อย',
 
@@ -2098,9 +2143,9 @@ async function handleDocumentImage(
       error.message
     )
 
-    await replyFlex(
+    await context.replyFlex(
 
-      replyToken,
+      event.replyToken,
 
       '⚠️ เกิดข้อผิดพลาด',
 
