@@ -122,15 +122,26 @@ async function readRows() {
       range:
         `${SHEET_NAME}!A${DATA_START_ROW}:T`,
 
-      // สำคัญ:
-      // ให้ Google Sheets คืนค่าตามที่แสดงใน Sheet
-      // เช่น 31 August 2026
+      // ใช้ค่าที่แสดงใน Google Sheet
       valueRenderOption:
         'FORMATTED_VALUE'
-
     })
 
-  return response.data.values || []
+  const rows =
+    response.data.values || []
+
+  console.log(
+    'GOOGLE SHEET READ:',
+    {
+      rows:
+        rows.length,
+
+      firstRow:
+        rows[0] || []
+    }
+  )
+
+  return rows
 }
 
 
@@ -163,7 +174,7 @@ async function readRows() {
 
 function rowToObject(r) {
 
-  return {
+  const result = {
 
     timestamp:
       cleanText(r[0]),
@@ -171,6 +182,12 @@ function rowToObject(r) {
     employeeCode:
       cleanText(r[1])
         .toUpperCase(),
+
+    // ==================================================
+    // IMPORTANT
+    // C = doctorID
+    // D = doctorName
+    // ==================================================
 
     doctorID:
       cleanText(r[2]),
@@ -227,6 +244,25 @@ function rowToObject(r) {
       cleanText(r[19])
 
   }
+
+  // ==================================================
+  // DEBUG
+  // ==================================================
+
+  /*
+  console.log(
+    'ROW MAP:',
+    {
+      employeeCode: result.employeeCode,
+      doctorID: result.doctorID,
+      doctorName: result.doctorName,
+      bn: result.bn,
+      dateText: result.dateText
+    }
+  )
+  */
+
+  return result
 }
 
 
@@ -292,9 +328,14 @@ async function getFilteredRows(
         console.log(
           'SKIP INVALID DATE:',
           {
-            rawDate: r.dateText,
-            bn: r.bn,
-            employeeCode: r.employeeCode
+            bn:
+              r.bn,
+
+            rawDate:
+              r.dateText,
+
+            employeeCode:
+              r.employeeCode
           }
         )
 
@@ -312,19 +353,12 @@ async function getFilteredRows(
       }
 
 
-      const rowDay =
-        parts[0]
-
       const rowMonth =
         parts[1]
 
       const rowYear =
         parts[2]
 
-
-      // ==================================================
-      // MONTH
-      // ==================================================
 
       if (
         rowMonth !==
@@ -333,10 +367,6 @@ async function getFilteredRows(
         return
       }
 
-
-      // ==================================================
-      // YEAR
-      // ==================================================
 
       if (
         rowYear !==
@@ -350,6 +380,23 @@ async function getFilteredRows(
 
     })
 
+  console.log(
+    'FILTERED ROWS:',
+    {
+      employeeCode:
+        normalizedEmployee,
+
+      month:
+        normalizedMonth,
+
+      year:
+        normalizedYear,
+
+      count:
+        result.length
+    }
+  )
+
   return result
 }
 
@@ -360,16 +407,50 @@ async function getFilteredRows(
 
 function formatResult(r) {
 
+  const doctorID =
+    cleanText(
+      r.doctorID
+    )
+
+  const doctorName =
+    cleanText(
+      r.doctorName
+    )
+
   return {
 
     bn:
       cleanText(r.bn),
 
+    // ==================================================
+    // Doctor
+    // ==================================================
+
     doctorID:
-      cleanText(r.doctorID),
+
+      doctorID ||
+
+      '-',
+
+    // alias เผื่อ frontend ใช้ doctorCode
+    doctorCode:
+
+      doctorID ||
+
+      '-',
 
     doctorName:
-      cleanText(r.doctorName),
+
+      doctorName ||
+
+      '-',
+
+    // alias เผื่อ frontend ใช้ doctor
+    doctor:
+
+      doctorName ||
+
+      '-',
 
     hn:
       cleanText(r.hn),
@@ -475,7 +556,9 @@ async function findByBN({
       function (r) {
 
         return (
-          normalizeSearch(r.bn) ===
+          normalizeSearch(
+            r.bn
+          ) ===
           searchBN
         )
 
@@ -486,6 +569,26 @@ async function findByBN({
     matchedRows
       .slice(0, MAX_RESULT)
       .map(formatResult)
+
+  console.log(
+    'FIND BY BN:',
+    {
+      bn,
+      matched:
+        matchedRows.length,
+
+      doctor:
+        list[0]
+          ? {
+              doctorID:
+                list[0].doctorID,
+
+              doctorName:
+                list[0].doctorName
+            }
+          : null
+    }
+  )
 
   return {
 
@@ -543,13 +646,10 @@ async function findByHN({
     const r =
       filteredRows[i]
 
-    const rowHN =
+    if (
       normalizeSearch(
         r.hn
-      )
-
-    if (
-      rowHN !==
+      ) !==
       searchHN
     ) {
       continue
@@ -618,7 +718,9 @@ async function findByName({
       function (r) {
 
         return (
-          normalizeSearch(r.name)
+          normalizeSearch(
+            r.name
+          )
             .includes(
               searchName
             )
@@ -667,54 +769,20 @@ async function findByDate({
 
 
   // ==================================================
-  // PARSE DAY
+  // GET DAY
   // ==================================================
 
-  const dateText =
-    cleanText(date)
-
-  let day = ''
-
-
-  // 31/08/2026
-  let match =
-    dateText.match(
-      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
+  const day =
+    extractDay(
+      date
     )
 
-  if (match) {
-
-    day =
-      String(match[1])
-        .padStart(2, '0')
-
-  }
-
-  // 31
-  else if (
-    /^\d{1,2}$/.test(
-      dateText
-    )
-  ) {
-
-    day =
-      String(dateText)
-        .padStart(2, '0')
-
-  }
-
-  else {
-
+  if (!day) {
     throw new Error(
       'Invalid date. Use DD or DD/MM/YYYY'
     )
-
   }
 
-
-  // ==================================================
-  // TARGET MONTH / YEAR
-  // ==================================================
 
   const targetMonth =
     String(month || '')
@@ -727,7 +795,7 @@ async function findByDate({
 
 
   // ==================================================
-  // FILTER EMPLOYEE + MONTH + YEAR
+  // FILTER MONTH / YEAR
   // ==================================================
 
   const filteredRows =
@@ -744,7 +812,9 @@ async function findByDate({
       employeeCode,
       targetMonth,
       targetYear,
-      targetDay: day,
+      targetDay:
+        day,
+
       filteredCount:
         filteredRows.length
     }
@@ -752,7 +822,7 @@ async function findByDate({
 
 
   // ==================================================
-  // FIND DAY
+  // MATCH DAY
   // ==================================================
 
   const matchedRows =
@@ -768,7 +838,6 @@ async function findByDate({
           return false
         }
 
-
         const parts =
           rowDate.split('/')
 
@@ -778,43 +847,43 @@ async function findByDate({
           return false
         }
 
-
         const rowDay =
-          String(parts[0])
-            .padStart(2, '0')
+          parts[0]
 
-
-        console.log(
-          'COMPARE DATE:',
-          {
-            raw:
-              r.dateText,
-
-            normalized:
-              rowDate,
-
-            rowDay,
-
-            targetDay:
-              day,
-
-            bn:
-              r.bn
-          }
-        )
-
-
-        return (
+        const matched =
           rowDay === day
-        )
+
+
+        if (matched) {
+
+          console.log(
+            'DATE MATCH:',
+            {
+              bn:
+                r.bn,
+
+              rawDate:
+                r.dateText,
+
+              normalizedDate:
+                rowDate,
+
+              doctorID:
+                r.doctorID,
+
+              doctorName:
+                r.doctorName
+            }
+          )
+
+        }
+
+
+        return matched
 
       }
     )
 
-
-  // ==================================================
-  // FORMAT
-  // ==================================================
 
   const list =
     matchedRows
@@ -853,6 +922,137 @@ async function findByDate({
     list
 
   }
+}
+
+
+// ==================================================
+// EXTRACT DAY
+// ==================================================
+
+function extractDay(value) {
+
+  const s =
+    cleanText(value)
+
+  if (!s) {
+    return ''
+  }
+
+
+  // 31
+  if (
+    /^\d{1,2}$/.test(s)
+  ) {
+
+    const day =
+      parseInt(
+        s,
+        10
+      )
+
+    if (
+      day < 1 ||
+      day > 31
+    ) {
+      return ''
+    }
+
+    return String(day)
+      .padStart(2, '0')
+  }
+
+
+  // 31/08/2026
+  // 31-08-2026
+
+  let match =
+    s.match(
+      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
+    )
+
+  if (match) {
+
+    const day =
+      parseInt(
+        match[1],
+        10
+      )
+
+    if (
+      day < 1 ||
+      day > 31
+    ) {
+      return ''
+    }
+
+    return String(day)
+      .padStart(2, '0')
+  }
+
+
+  // 31 August 2026
+
+  match =
+    s.match(
+      /^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/i
+    )
+
+  if (match) {
+
+    const day =
+      parseInt(
+        match[1],
+        10
+      )
+
+    if (
+      day < 1 ||
+      day > 31
+    ) {
+      return ''
+    }
+
+    return String(day)
+      .padStart(2, '0')
+  }
+
+
+  // August 31 2026
+
+  match =
+    s.match(
+      /^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/i
+    )
+
+  if (match) {
+
+    const day =
+      parseInt(
+        match[2],
+        10
+      )
+
+    if (
+      day < 1 ||
+      day > 31
+    ) {
+      return ''
+    }
+
+    return String(day)
+      .padStart(2, '0')
+  }
+
+
+  const normalized =
+    toDateShort(s)
+
+  if (!normalized) {
+    return ''
+  }
+
+  return normalized
+    .split('/')[0]
 }
 
 
@@ -915,6 +1115,16 @@ function cleanText(value) {
     .replace(
       /\u200B/g,
       ''
+    )
+
+    .replace(
+      /\r/g,
+      ''
+    )
+
+    .replace(
+      /\n/g,
+      ' '
     )
 
     .trim()
@@ -1011,7 +1221,7 @@ function toDateShort(dateValue) {
 
 
     // ==================================================
-    // JS DATE OBJECT
+    // JS DATE
     // ==================================================
 
     if (
@@ -1033,17 +1243,11 @@ function toDateShort(dateValue) {
         dateValue.getMonth() + 1,
         dateValue.getFullYear()
       )
-
     }
 
 
-    // ==================================================
-    // STRING
-    // ==================================================
-
     const s =
-      String(dateValue)
-        .trim()
+      cleanText(dateValue)
 
     if (!s) {
       return ''
@@ -1066,7 +1270,6 @@ function toDateShort(dateValue) {
         match[2],
         match[3]
       )
-
     }
 
 
@@ -1086,7 +1289,6 @@ function toDateShort(dateValue) {
         match[2],
         match[3]
       )
-
     }
 
 
@@ -1130,7 +1332,6 @@ function toDateShort(dateValue) {
         month,
         year
       )
-
     }
 
 
@@ -1174,7 +1375,6 @@ function toDateShort(dateValue) {
         month,
         year
       )
-
     }
 
 
@@ -1194,12 +1394,11 @@ function toDateShort(dateValue) {
         match[2],
         match[1]
       )
-
     }
 
 
     // ==================================================
-    // GOOGLE SHEETS SERIAL NUMBER
+    // GOOGLE SHEETS SERIAL DATE
     // ==================================================
 
     if (
@@ -1214,7 +1413,7 @@ function toDateShort(dateValue) {
         serial < 100000
       ) {
 
-        const date =
+        const base =
           new Date(
             Date.UTC(
               1899,
@@ -1223,19 +1422,19 @@ function toDateShort(dateValue) {
             )
           )
 
-        date.setUTCDate(
-          date.getUTCDate() +
-          Math.floor(serial)
-        )
+        const date =
+          new Date(
+            base.getTime() +
+            Math.floor(serial) *
+            86400000
+          )
 
         return normalizeDate(
           date.getUTCDate(),
           date.getUTCMonth() + 1,
           date.getUTCFullYear()
         )
-
       }
-
     }
 
 
@@ -1262,8 +1461,15 @@ function toDateShort(dateValue) {
 
   } catch (err) {
 
-    return ''
+    console.error(
+      'toDateShort ERROR:',
+      {
+        value: dateValue,
+        error: err.message
+      }
+    )
 
+    return ''
   }
 }
 
@@ -1317,25 +1523,18 @@ function normalizeDate(
 
   if (
     testDate.getFullYear() !== y ||
-    testDate.getMonth() !==
-      m - 1 ||
+    testDate.getMonth() !== m - 1 ||
     testDate.getDate() !== d
   ) {
     return ''
   }
 
   return (
-
     String(d).padStart(2, '0') +
-
     '/' +
-
     String(m).padStart(2, '0') +
-
     '/' +
-
     String(y)
-
   )
 }
 
@@ -1430,7 +1629,6 @@ function safeParseJson(value) {
   } catch (err) {
 
     return []
-
   }
 }
 
