@@ -183,6 +183,51 @@ function buildSearchDetailFlex(
           ]
         },
 
+        {
+            type: 'box',
+            layout: 'horizontal',
+            spacing: 'md',
+            contents: [
+                {
+                type: 'text',
+                text: 'รหัสแพทย์',
+                size: 'sm',
+                color: '#777777',
+                flex: 1
+                },
+                {
+                type: 'text',
+                text: safeFlexText(item.doctorID),
+                size: 'sm',
+                align: 'end',
+                flex: 2,
+                wrap: true
+                }
+            ]
+            },
+
+            {
+            type: 'box',
+            layout: 'horizontal',
+            spacing: 'md',
+            contents: [
+                {
+                type: 'text',
+                text: 'แพทย์',
+                size: 'sm',
+                color: '#777777',
+                flex: 1
+                },
+                {
+                type: 'text',
+                text: safeFlexText(item.doctorName),
+                size: 'sm',
+                align: 'end',
+                flex: 2,
+                wrap: true
+                }
+            ]
+            },
 
         // HN
 
