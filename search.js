@@ -2111,8 +2111,6 @@ function safeParseJson(value) {
 
 module.exports = {
 
-  saveReceipt,
-
   findByBN,
 
   findByHN,
