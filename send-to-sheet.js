@@ -13,7 +13,8 @@ const GOOGLE_PRIVATE_KEY =
 const SHEET_ID =
   process.env.SHEET_ID
 
-const SHEET_NAME = 'Sheet1'
+const SHEET_NAME =
+  process.env.SHEET_NAME || 'Sheet1'
 
 // ==================================================
 // GOOGLE AUTH
@@ -71,11 +72,13 @@ function getGoogleAuth() {
   return new google.auth.GoogleAuth({
 
     credentials: {
+
       client_email:
         GOOGLE_SERVICE_ACCOUNT_EMAIL,
 
       private_key:
         privateKey
+
     },
 
     scopes: [
@@ -105,59 +108,69 @@ function toSheetRow(data) {
     // B - EmployeeCode
     data.employeeCode || '',
 
-    // C - BN
+    // C - DoctorID
+    data.doctorID || '',
+
+    // D - DoctorName
+    data.doctorName || '',
+
+    // E - BN
     data.bn ||
       data.receiptNo ||
       '',
 
-    // D - DateText
-    data.receiptDateRaw || '',
+    // F - DateText
+    data.receiptDateRaw ||
+      data.dateText ||
+      data.date ||
+      '',
 
-    // E - TimeText
+    // G - TimeText
     data.timeText || '',
 
-    // F - HN
+    // H - HN
     data.hn || '',
 
-    // G - Name
-    data.patientName || '',
+    // I - Name
+    data.patientName ||
+      data.name ||
+      '',
 
-    // H - PaymentType
+    // J - PaymentType
     data.paymentType || '',
 
-    // I - VAT
+    // K - VAT
     data.vat || '',
 
-    // J - Amount
+    // L - Amount
     data.amount || '',
 
-    // K - Discount
+    // M - Discount
     data.discount || '',
 
-    // L - Discount by Doctor
+    // N - Discount by Doctor
     data.discountByDoctor || '',
 
-    // M - Total
+    // O - Total
     data.total || '',
 
-    // N - Doctor Fee
+    // P - Doctor Fee
     data.doctorFee || '',
 
-    // O - Hospital & Nursing
+    // Q - Hospital & Nursing
     data.hospitalNursing || '',
 
-    // P - Other
+    // R - Other
     data.other || '',
 
-    // Q - Items JSON
+    // S - Items JSON
     itemsJson,
 
-    // R - OCR Raw
+    // T - OCR Raw
     data.raw || ''
 
   ]
 }
-
 
 // ==================================================
 // SEND TO GOOGLE SHEET
@@ -213,7 +226,7 @@ async function sendToSheet(data) {
           SHEET_ID,
 
         range:
-          `${SHEET_NAME}!A:R`,
+          `${SHEET_NAME}!A:T`,
 
         valueInputOption:
           'USER_ENTERED',

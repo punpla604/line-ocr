@@ -3,12 +3,6 @@ require('dotenv').config()
 const express = require('express')
 const axios = require('axios')
 const { google } = require('googleapis')
-const sendToSheet = require('./send-to-sheet')
-
-const {
-  ocrImage,
-  parseReceipt
-} = require('./ocr')
 
 const {
   getMonthlySummary,
@@ -32,7 +26,15 @@ const {
 } = require('./search-flex')
 
 const {
-  verifySummaryPassword
+  startDocument,
+  handleDocumentText,
+  handleDocumentPostback,
+  handleDocumentImage
+} = require('./document')
+
+const {
+  verifySummaryPassword,
+  checkUser
 } = require('./summary-auth')
 
 const app = express()
@@ -58,9 +60,6 @@ const GOOGLE_PRIVATE_KEY =
     '\n'
   )
 
-const WAIT_IMAGE_MS =
-  60 * 1000
-
 const WAIT_SEARCH_MS =
   60 * 1000
 
@@ -75,12 +74,15 @@ const userState =
   new Map()
 
 function defaultState() {
+
   return {
     mode: 'idle',
     step: 'idle',
 
+    // DOCUMENT
     employeeCode: '',
-
+    doctorID: '',
+    doctorName: '',
     waitingSince: null,
 
     // SUMMARY
@@ -103,7 +105,9 @@ function defaultState() {
 }
 
 function getState(userId) {
+
   if (!userState.has(userId)) {
+
     userState.set(
       userId,
       defaultState()
@@ -114,6 +118,7 @@ function getState(userId) {
 }
 
 function resetState(userId) {
+
   const state =
     defaultState()
 
@@ -278,6 +283,12 @@ function isValidMonth(text) {
   )
 }
 
+function getCurrentYear() {
+
+  return new Date()
+    .getFullYear()
+}
+
 function isValidYear(text) {
 
   const value =
@@ -290,7 +301,7 @@ function isValidYear(text) {
   }
 
   const currentYear =
-    new Date().getFullYear()
+    getCurrentYear()
 
   const minYear =
     currentYear - 5
@@ -307,7 +318,7 @@ function isValidYear(text) {
 function getYearRangeText() {
 
   const currentYear =
-    new Date().getFullYear()
+    getCurrentYear()
 
   return `${currentYear - 5} - ${currentYear}`
 }
@@ -355,6 +366,101 @@ function isValidSearchDay(
 
   return (
     day <= daysInMonth
+  )
+}
+
+// ==================================================
+// DATE HELPERS
+// ==================================================
+
+function normalizeDateText(value) {
+
+  return String(
+    value || ''
+  )
+    .trim()
+    .replace(/\s+/g, '')
+}
+
+function normalizeDateForCompare(
+  value
+) {
+
+  const source =
+    normalizeDateText(
+      value
+    )
+
+  if (!source) {
+    return ''
+  }
+
+  // YYYY-MM-DD
+  let match =
+    source.match(
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+    )
+
+  if (match) {
+
+    return (
+      `${match[3].padStart(2, '0')}/` +
+      `${match[2].padStart(2, '0')}/` +
+      `${match[1]}`
+    )
+  }
+
+  // DD/MM/YYYY
+  match =
+    source.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+    )
+
+  if (match) {
+
+    return (
+      `${match[1].padStart(2, '0')}/` +
+      `${match[2].padStart(2, '0')}/` +
+      `${match[3]}`
+    )
+  }
+
+  // DD-MM-YYYY
+  match =
+    source.match(
+      /^(\d{1,2})-(\d{1,2})-(\d{4})$/
+    )
+
+  if (match) {
+
+    return (
+      `${match[1].padStart(2, '0')}/` +
+      `${match[2].padStart(2, '0')}/` +
+      `${match[3]}`
+    )
+  }
+
+  return source
+}
+
+function dateMatches(
+  sheetDate,
+  targetDate
+) {
+
+  const source =
+    normalizeDateForCompare(
+      sheetDate
+    )
+
+  const target =
+    normalizeDateForCompare(
+      targetDate
+    )
+
+  return (
+    source !== '' &&
+    source === target
   )
 }
 
@@ -440,6 +546,37 @@ async function replyFlex(
       timeout: 15000
     }
   )
+}
+
+// ==================================================
+// DOCUMENT CONTEXT
+// ==================================================
+
+function getDocumentContext() {
+
+  return {
+    lineToken:
+      LINE_TOKEN,
+
+    sheetId:
+      SHEET_ID,
+
+    getSheetsClient,
+
+    reply,
+
+    replyFlex,
+
+    resetState,
+
+    isExpired,
+
+    formatNumber,
+
+    normalizeEmployeeCode,
+
+    isValidEmployeeCode
+  }
 }
 
 // ==================================================
@@ -618,12 +755,17 @@ async function querySheet(
     }
   }
 
+  const normalizeHeader =
+    value =>
+      String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .replace(/_/g, '')
+
   const headers =
     rows[0].map(
-      header =>
-        String(header || '')
-          .trim()
-          .toLowerCase()
+      normalizeHeader
     )
 
   const dataRows =
@@ -641,9 +783,9 @@ async function querySheet(
 
       const index =
         headers.indexOf(
-          String(possibleName)
-            .trim()
-            .toLowerCase()
+          normalizeHeader(
+            possibleName
+          )
         )
 
       if (
@@ -651,7 +793,7 @@ async function querySheet(
       ) {
 
         return String(
-          row[index] || ''
+          row[index] ?? ''
         ).trim()
       }
     }
@@ -815,6 +957,7 @@ async function querySheet(
       )
 
     if (match) {
+
       return {
         year: match[1],
 
@@ -830,6 +973,23 @@ async function querySheet(
       )
 
     if (match) {
+
+      return {
+        year: match[3],
+
+        month:
+          String(match[2])
+            .padStart(2, '0')
+      }
+    }
+
+    match =
+      rawDate.match(
+        /^(\d{1,2})-(\d{1,2})-(\d{4})$/
+      )
+
+    if (match) {
+
       return {
         year: match[3],
 
@@ -991,57 +1151,12 @@ async function querySheet(
 
     filtered =
       filtered.filter(
-        item => {
-
-          const sheetDate =
-            normalizeText(
-              item.dateText ||
-              item.date
-            )
-
-          if (
-            sheetDate ===
-            normalizeText(
-              date
-            )
-          ) {
-            return true
-          }
-
-          const parsed =
-            new Date(
-              item.dateText ||
-              item.date
-            )
-
-          if (
-            Number.isNaN(
-              parsed.getTime()
-            )
-          ) {
-            return false
-          }
-
-          const day =
-            String(
-              parsed.getDate()
-            ).padStart(2, '0')
-
-          const monthValue =
-            String(
-              parsed.getMonth() + 1
-            ).padStart(2, '0')
-
-          const yearValue =
-            String(
-              parsed.getFullYear()
-            )
-
-          return (
-            `${day}/${monthValue}/${yearValue}` ===
+        item =>
+          dateMatches(
+            item.dateText ||
+            item.date,
             date
           )
-        }
       )
   }
 
@@ -1131,6 +1246,7 @@ async function processSummary(
     console.error(
       'SUMMARY ERROR:',
       summaryError.response?.data ||
+      summaryError.stack ||
       summaryError.message
     )
 
@@ -1224,6 +1340,7 @@ async function processDailySummary(
     console.error(
       'DAILY SUMMARY ERROR:',
       summaryError.response?.data ||
+      summaryError.stack ||
       summaryError.message
     )
 
@@ -1265,6 +1382,9 @@ app.post(
     let state =
       getState(userId)
 
+    const documentContext =
+      getDocumentContext()
+
     try {
 
       // ==================================================
@@ -1285,9 +1405,32 @@ app.post(
           data
         )
 
-        // --------------------------------------------------
-        // NO OP
-        // --------------------------------------------------
+        // ==================================================
+        // DOCUMENT POSTBACK
+        // ==================================================
+
+        if (
+          state.mode === 'upload'
+        ) {
+
+          const handled =
+            await handleDocumentPostback(
+              event,
+              userId,
+              state,
+              documentContext
+            )
+
+          if (
+            handled
+          ) {
+            return res.sendStatus(200)
+          }
+        }
+
+        // ==================================================
+        // SEARCH NO OP
+        // ==================================================
 
         if (
           data === 'search_noop'
@@ -1295,9 +1438,64 @@ app.post(
           return res.sendStatus(200)
         }
 
-        // --------------------------------------------------
+        // ==================================================
+        // SEARCH CONFIRM EMPLOYEE
+        // ==================================================
+
+        if (
+          data === 'search_confirm_employee'
+        ) {
+
+          if (
+            state.mode !== 'search'
+          ) {
+
+            await reply(
+              event.replyToken,
+
+              '⏱️ session การค้นหาหมดอายุแล้วครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
+            )
+
+            return res.sendStatus(200)
+          }
+
+          if (
+            !isValidEmployeeCode(
+              state.employeeCode
+            )
+          ) {
+
+            await reply(
+              event.replyToken,
+
+              '❌ ไม่พบรหัสพนักงานที่ถูกต้องครับ\nพิมพ์ "ค้นหา" เพื่อเริ่มใหม่'
+            )
+
+            return res.sendStatus(200)
+          }
+
+          state.step =
+            'waitingSearchMonth'
+
+          state.searchWaitingSince =
+            Date.now()
+
+          await replyFlex(
+            event.replyToken,
+
+            `👤 Employee: ${state.employeeCode}\n📅 กรุณาเลือกเดือน`,
+
+            buildMonthFlex(
+              'search'
+            )
+          )
+
+          return res.sendStatus(200)
+        }
+
+        // ==================================================
         // SEARCH CHOOSE MONTH
-        // --------------------------------------------------
+        // ==================================================
 
         if (
           data === 'search_choose_month'
@@ -1335,9 +1533,9 @@ app.post(
           return res.sendStatus(200)
         }
 
-        // --------------------------------------------------
+        // ==================================================
         // SEARCH MONTH
-        // --------------------------------------------------
+        // ==================================================
 
         if (
           data.startsWith(
@@ -1389,9 +1587,9 @@ app.post(
           return res.sendStatus(200)
         }
 
-        // --------------------------------------------------
+        // ==================================================
         // SEARCH YEAR
-        // --------------------------------------------------
+        // ==================================================
 
         if (
           data.startsWith(
@@ -1441,9 +1639,9 @@ app.post(
           return res.sendStatus(200)
         }
 
-        // --------------------------------------------------
+        // ==================================================
         // SEARCH TYPE
-        // --------------------------------------------------
+        // ==================================================
 
         if (
           data.startsWith(
@@ -1532,9 +1730,9 @@ ${hint}
           return res.sendStatus(200)
         }
 
-        // --------------------------------------------------
+        // ==================================================
         // SEARCH DISABLED
-        // --------------------------------------------------
+        // ==================================================
 
         if (
           data === 'search_disabled'
@@ -1542,9 +1740,9 @@ ${hint}
           return res.sendStatus(200)
         }
 
-        // --------------------------------------------------
+        // ==================================================
         // SEARCH PAGE
-        // --------------------------------------------------
+        // ==================================================
 
         if (
           data.startsWith(
@@ -1606,9 +1804,9 @@ ${hint}
           return res.sendStatus(200)
         }
 
-        // --------------------------------------------------
+        // ==================================================
         // SEARCH DETAIL
-        // --------------------------------------------------
+        // ==================================================
 
         if (
           data.startsWith(
@@ -1806,10 +2004,6 @@ ${hint}
           state.summaryWaitingSince =
             Date.now()
 
-          // ----------------------------------------------
-          // DAILY
-          // ----------------------------------------------
-
           if (
             state.summaryType ===
             'daily'
@@ -1832,10 +2026,6 @@ ${hint}
             return res.sendStatus(200)
           }
 
-          // ----------------------------------------------
-          // MONTHLY
-          // ----------------------------------------------
-
           if (
             state.summaryType ===
             'monthly'
@@ -1854,10 +2044,6 @@ ${hint}
           return res.sendStatus(200)
         }
 
-        // ==================================================
-        // UNKNOWN POSTBACK
-        // ==================================================
-
         return res.sendStatus(200)
       }
 
@@ -1873,78 +2059,6 @@ ${hint}
           String(
             event.message.text || ''
           ).trim()
-
-        // ==================================================
-        // TIMEOUT - UPLOAD
-        // ==================================================
-
-        if (
-          state.mode === 'upload' &&
-          state.step === 'waitingImage' &&
-          isExpired(
-            state.waitingSince,
-            WAIT_IMAGE_MS
-          )
-        ) {
-
-          resetState(userId)
-
-          await reply(
-            event.replyToken,
-
-            '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
-          )
-
-          return res.sendStatus(200)
-        }
-
-        // ==================================================
-        // TIMEOUT - SEARCH
-        // ==================================================
-
-        if (
-          state.mode === 'search' &&
-          state.step !== 'idle' &&
-          isExpired(
-            state.searchWaitingSince,
-            WAIT_SEARCH_MS
-          )
-        ) {
-
-          resetState(userId)
-
-          await reply(
-            event.replyToken,
-
-            '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะค้นหาใหม่ พิมพ์ "ค้นหา"'
-          )
-
-          return res.sendStatus(200)
-        }
-
-        // ==================================================
-        // TIMEOUT - SUMMARY
-        // ==================================================
-
-        if (
-          state.mode === 'summary' &&
-          state.step !== 'idle' &&
-          isExpired(
-            state.summaryWaitingSince,
-            WAIT_SUMMARY_MS
-          )
-        ) {
-
-          resetState(userId)
-
-          await reply(
-            event.replyToken,
-
-            '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะสรุปยอดใหม่ พิมพ์ "สรุปยอดรวม"'
-          )
-
-          return res.sendStatus(200)
-        }
 
         // ==================================================
         // CANCEL
@@ -1979,7 +2093,7 @@ ${hint}
         }
 
         // ==================================================
-        // START UPLOAD
+        // START DOCUMENT
         // ==================================================
 
         if (
@@ -1992,13 +2106,83 @@ ${hint}
           state.mode =
             'upload'
 
-          state.step =
-            'waitingEmployeeCode'
+          await startDocument(
+            event,
+            userId,
+            state,
+            documentContext
+          )
+
+          return res.sendStatus(200)
+        }
+
+        // ==================================================
+        // DOCUMENT MODE
+        // ==================================================
+
+        if (
+          state.mode === 'upload'
+        ) {
+
+          const handled =
+            await handleDocumentText(
+              event,
+              userId,
+              state,
+              text,
+              documentContext
+            )
+
+          if (
+            handled
+          ) {
+            return res.sendStatus(200)
+          }
+        }
+
+        // ==================================================
+        // TIMEOUT SEARCH
+        // ==================================================
+
+        if (
+          state.mode === 'search' &&
+          state.step !== 'idle' &&
+          isExpired(
+            state.searchWaitingSince,
+            WAIT_SEARCH_MS
+          )
+        ) {
+
+          resetState(userId)
 
           await reply(
             event.replyToken,
 
-            '🟦 ส่งเอกสาร\nกรุณาพิมพ์รหัสพนักงานครับ 👤'
+            '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะค้นหาใหม่ พิมพ์ "ค้นหา"'
+          )
+
+          return res.sendStatus(200)
+        }
+
+        // ==================================================
+        // TIMEOUT SUMMARY
+        // ==================================================
+
+        if (
+          state.mode === 'summary' &&
+          state.step !== 'idle' &&
+          isExpired(
+            state.summaryWaitingSince,
+            WAIT_SUMMARY_MS
+          )
+        ) {
+
+          resetState(userId)
+
+          await reply(
+            event.replyToken,
+
+            '⏱️ รอคำตอบเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะสรุปยอดใหม่ พิมพ์ "สรุปยอดรวม"'
           )
 
           return res.sendStatus(200)
@@ -2041,21 +2225,41 @@ ${hint}
           text === 'สรุปยอดรวม'
         ) {
 
-          const auth =
-            await require(
-              './summary-auth'
-            ).checkUser(
-              userId
-            )
+          try {
 
-          if (
-            auth.locked
+            const auth =
+              await checkUser(
+                userId
+              )
+
+            if (
+              auth?.locked
+            ) {
+
+              await reply(
+                event.replyToken,
+
+                '🔒 บัญชีนี้ถูกล็อกไม่ให้เข้าดูสรุปยอดรวมแล้วครับ\nกรุณาติดต่อผู้ดูแลระบบ'
+              )
+
+              return res.sendStatus(200)
+            }
+
+          } catch (
+            authCheckError
           ) {
+
+            console.error(
+              'SUMMARY CHECK USER ERROR:',
+              authCheckError.response?.data ||
+              authCheckError.stack ||
+              authCheckError.message
+            )
 
             await reply(
               event.replyToken,
 
-              '🔒 บัญชีนี้ถูกล็อกไม่ให้เข้าดูสรุปยอดรวมแล้วครับ\nกรุณาติดต่อผู้ดูแลระบบ'
+              '⚠️ ไม่สามารถตรวจสอบสิทธิ์ได้ครับ\nกรุณาลองใหม่อีกครั้ง'
             )
 
             return res.sendStatus(200)
@@ -2080,82 +2284,6 @@ ${hint}
           )
 
           return res.sendStatus(200)
-        }
-
-        // ==================================================
-        // UPLOAD MODE
-        // ==================================================
-
-        if (
-          state.mode === 'upload'
-        ) {
-
-          // ------------------------------------------------
-          // EMPLOYEE CODE
-          // ------------------------------------------------
-
-          if (
-            state.step ===
-            'waitingEmployeeCode'
-          ) {
-
-            const code =
-              normalizeEmployeeCode(
-                text
-              )
-
-            if (
-              !isValidEmployeeCode(
-                code
-              )
-            ) {
-
-              await reply(
-                event.replyToken,
-
-                '❌ รหัสพนักงานไม่ถูกต้องครับ\nกรุณาพิมพ์ใหม่อีกครั้ง\nหรือพิมพ์ "ยกเลิก"'
-              )
-
-              return res.sendStatus(200)
-            }
-
-            state.employeeCode =
-              code
-
-            state.step =
-              'waitingImage'
-
-            state.waitingSince =
-              Date.now()
-
-            await reply(
-              event.replyToken,
-
-              `โอเคครับ 👤 ${code}
-
-ส่งรูปใบเสร็จมาได้เลยครับ (ทีละ 1 รูป) 🧾`
-            )
-
-            return res.sendStatus(200)
-          }
-
-          // ------------------------------------------------
-          // WAIT IMAGE
-          // ------------------------------------------------
-
-          if (
-            state.step ===
-            'waitingImage'
-          ) {
-
-            await reply(
-              event.replyToken,
-
-              'ตอนนี้รอรูปใบเสร็จอยู่นะครับ 🧾\nส่งรูปมาได้เลย หรือพิมพ์ "ยกเลิก"'
-            )
-
-            return res.sendStatus(200)
-          }
         }
 
         // ==================================================
@@ -2511,10 +2639,6 @@ ${hint}
 
             let result = null
 
-            // ------------------------------------------------
-            // BN
-            // ------------------------------------------------
-
             if (
               state.searchType ===
               'BN'
@@ -2527,10 +2651,6 @@ ${hint}
                   bn: value
                 })
             }
-
-            // ------------------------------------------------
-            // HN
-            // ------------------------------------------------
 
             else if (
               state.searchType ===
@@ -2545,10 +2665,6 @@ ${hint}
                 })
             }
 
-            // ------------------------------------------------
-            // NAME
-            // ------------------------------------------------
-
             else if (
               state.searchType ===
               'NAME'
@@ -2561,10 +2677,6 @@ ${hint}
                   name: value
                 })
             }
-
-            // ------------------------------------------------
-            // DATE
-            // ------------------------------------------------
 
             else if (
               state.searchType ===
@@ -2696,6 +2808,7 @@ ${hint}
               console.error(
                 'SUMMARY AUTH ERROR:',
                 authError.response?.data ||
+                authError.stack ||
                 authError.message
               )
 
@@ -2805,10 +2918,6 @@ ${hint}
             state.summaryWaitingSince =
               Date.now()
 
-            // ----------------------------------------------
-            // MONTHLY
-            // ----------------------------------------------
-
             if (
               state.summaryType ===
               'monthly'
@@ -2823,10 +2932,6 @@ ${hint}
 
               return res.sendStatus(200)
             }
-
-            // ----------------------------------------------
-            // DAILY
-            // ----------------------------------------------
 
             if (
               state.summaryType ===
@@ -2943,199 +3048,23 @@ ${hint}
       ) {
 
         if (
-          state.mode !== 'upload' ||
-          state.step !== 'waitingImage' ||
-          !state.employeeCode
+          state.mode === 'upload'
         ) {
 
-          await reply(
-            event.replyToken,
-
-            'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" แล้วใส่รหัสพนักงานก่อนครับ 🙂'
+          await handleDocumentImage(
+            event,
+            userId,
+            state,
+            documentContext
           )
 
           return res.sendStatus(200)
         }
-
-        if (
-          isExpired(
-            state.waitingSince,
-            WAIT_IMAGE_MS
-          )
-        ) {
-
-          resetState(
-            userId
-          )
-
-          await reply(
-            event.replyToken,
-
-            '⏱️ รอรูปเกิน 1 นาทีแล้วครับ ระบบยกเลิก session ให้อัตโนมัติ\nถ้าจะส่งใหม่ พิมพ์ "ส่งเอกสาร"'
-          )
-
-          return res.sendStatus(200)
-        }
-
-        const messageId =
-          event.message.id
-
-        // ------------------------------------------------
-        // GET IMAGE FROM LINE
-        // ------------------------------------------------
-
-        const imageRes =
-          await axios.get(
-            `https://api-data.line.me/v2/bot/message/${messageId}/content`,
-
-            {
-              headers: {
-                Authorization:
-                  `Bearer ${LINE_TOKEN}`
-              },
-
-              responseType:
-                'arraybuffer',
-
-              timeout: 20000
-            }
-          )
-
-        // ------------------------------------------------
-        // OCR
-        // ------------------------------------------------
-
-        const ocrText =
-          await ocrImage(
-            imageRes.data
-          )
-
-        console.log(
-          'OCR result:',
-          ocrText
-        )
-
-        if (!ocrText) {
-
-          await reply(
-            event.replyToken,
-
-            'อ่านตัวอักษรไม่ออกครับ 😅 กรุณาลองถ่ายใหม่ให้ชัดขึ้น'
-          )
-
-          return res.sendStatus(200)
-        }
-
-        // ------------------------------------------------
-        // RECEIPT VALIDATION
-        // ------------------------------------------------
-
-        const receiptText =
-          String(ocrText)
-            .toLowerCase()
-            .replace(
-              /\s+/g,
-              ' '
-            )
-
-        const isReceipt =
-          receiptText.includes(
-            'receipt'
-          ) &&
-          receiptText.includes(
-            'asoke skin hospital'
-          )
-
-        if (!isReceipt) {
-
-          await reply(
-            event.replyToken,
-
-            '❌ รูปนี้ไม่ใช่ใบเสร็จรูปแบบที่รองรับครับ\nกรุณาส่งใบเสร็จ Asoke Skin Hospital เท่านั้น 🧾'
-          )
-
-          return res.sendStatus(200)
-        }
-
-        // ------------------------------------------------
-        // PARSE RECEIPT
-        // ------------------------------------------------
-
-        const parsed =
-          parseReceipt(
-            ocrText
-          )
-
-        parsed.employeeCode =
-          state.employeeCode
-
-        parsed.amount =
-          parsed.amount || ''
-
-        parsed.discount =
-          parsed.discount || ''
-
-        parsed.discountByDoctor =
-          parsed.discountByDoctor || ''
-
-        parsed.doctorFee =
-          parsed.doctorFee || ''
-
-        parsed.hospitalNursing =
-          parsed.hospitalNursing || ''
-
-        parsed.other =
-          parsed.other || ''
-
-        // ------------------------------------------------
-        // SAVE TO SHEET
-        // ------------------------------------------------
-
-        await sendToSheet(
-          parsed
-        )
-
-        // ------------------------------------------------
-        // KEEP UPLOAD SESSION
-        // ------------------------------------------------
-
-        state.waitingSince =
-          Date.now()
-
-        // ------------------------------------------------
-        // SUCCESS
-        // ------------------------------------------------
 
         await reply(
           event.replyToken,
 
-          `✅ บันทึกเรียบร้อยครับ
-
-👤 รหัสพนักงาน: ${state.employeeCode}
-
-BN: ${parsed.bn || '-'}
-
-Date: ${parsed.receiptDateRaw || '-'}
-
-HN: ${parsed.hn || '-'}
-
-Amount: ${formatNumber(parsed.amount)}
-
-Discount: ${formatNumber(parsed.discount)}
-
-Discount by Doctor: ${formatNumber(parsed.discountByDoctor)}
-
-Total: ${formatNumber(parsed.total)}
-
-Doctor Fee: ${formatNumber(parsed.doctorFee)}
-
-Hospital & Nursing: ${formatNumber(parsed.hospitalNursing)}
-
-Other: ${formatNumber(parsed.other)}
-
-ส่งรูปต่อไปได้เลย 🧾
-
-หรือพิมพ์ "ยกเลิก" เพื่อจบ`
+          'ก่อนส่งรูป กรุณาพิมพ์ "ส่งเอกสาร" แล้วทำตามขั้นตอนก่อนครับ 🙂'
         )
 
         return res.sendStatus(200)
@@ -3150,6 +3079,7 @@ Other: ${formatNumber(parsed.other)}
       console.error(
         'WEBHOOK ERROR:',
         err.response?.data ||
+        err.stack ||
         err.message
       )
 
@@ -3158,7 +3088,7 @@ Other: ${formatNumber(parsed.other)}
         await reply(
           event.replyToken,
 
-          '⚠️ ระบบค้นหาหรือประมวลผลเกิดข้อผิดพลาดครับ\nกรุณาลองใหม่อีกครั้ง'
+          '⚠️ ระบบเกิดข้อผิดพลาดครับ\nกรุณาลองใหม่อีกครั้ง'
         )
 
       } catch (
