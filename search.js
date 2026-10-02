@@ -120,7 +120,13 @@ async function readRows() {
         SHEET_ID,
 
       range:
-        `${SHEET_NAME}!A${DATA_START_ROW}:T`
+        `${SHEET_NAME}!A${DATA_START_ROW}:T`,
+
+      // สำคัญ:
+      // ให้ Google Sheets คืนค่าตามที่แสดงใน Sheet
+      // เช่น 31 August 2026
+      valueRenderOption:
+        'FORMATTED_VALUE'
 
     })
 
@@ -131,8 +137,6 @@ async function readRows() {
 // ==================================================
 // ROW -> OBJECT
 // ==================================================
-//
-// Sheet:
 //
 // A timestamp
 // B employeeCode
@@ -162,7 +166,7 @@ function rowToObject(r) {
   return {
 
     timestamp:
-      r[0] || '',
+      cleanText(r[0]),
 
     employeeCode:
       cleanText(r[1])
@@ -178,7 +182,7 @@ function rowToObject(r) {
       cleanText(r[4]),
 
     dateText:
-      r[5] || '',
+      cleanText(r[5]),
 
     timeText:
       cleanText(r[6]),
@@ -254,11 +258,15 @@ async function getFilteredRows(
     String(year || '')
       .trim()
 
-  return rows
+  const result = []
 
+  rows
     .map(rowToObject)
+    .forEach(function (r) {
 
-    .filter(function (r) {
+      // ==================================================
+      // EMPLOYEE
+      // ==================================================
 
       if (
         normalizeSearch(
@@ -266,8 +274,13 @@ async function getFilteredRows(
         ) !==
         normalizedEmployee
       ) {
-        return false
+        return
       }
+
+
+      // ==================================================
+      // DATE
+      // ==================================================
 
       const shortDate =
         toDateShort(
@@ -275,32 +288,69 @@ async function getFilteredRows(
         )
 
       if (!shortDate) {
-        return false
+
+        console.log(
+          'SKIP INVALID DATE:',
+          {
+            rawDate: r.dateText,
+            bn: r.bn,
+            employeeCode: r.employeeCode
+          }
+        )
+
+        return
       }
+
 
       const parts =
         shortDate.split('/')
 
-      if (parts.length !== 3) {
-        return false
+      if (
+        parts.length !== 3
+      ) {
+        return
       }
 
+
+      const rowDay =
+        parts[0]
+
+      const rowMonth =
+        parts[1]
+
+      const rowYear =
+        parts[2]
+
+
+      // ==================================================
+      // MONTH
+      // ==================================================
+
       if (
-        parts[1] !==
+        rowMonth !==
         normalizedMonth
       ) {
-        return false
+        return
       }
+
+
+      // ==================================================
+      // YEAR
+      // ==================================================
 
       if (
-        parts[2] !==
+        rowYear !==
         normalizedYear
       ) {
-        return false
+        return
       }
 
-      return true
+
+      result.push(r)
+
     })
+
+  return result
 }
 
 
@@ -328,7 +378,7 @@ function formatResult(r) {
       cleanText(r.name),
 
     dateText:
-      r.dateText || '',
+      cleanText(r.dateText),
 
     dateShort:
       toDateShort(
@@ -345,10 +395,14 @@ function formatResult(r) {
       cleanText(r.vat),
 
     amount:
-      formatNumber(r.amount),
+      formatNumber(
+        r.amount
+      ),
 
     discount:
-      formatNumber(r.discount),
+      formatNumber(
+        r.discount
+      ),
 
     discountByDoctor:
       formatNumber(
@@ -356,10 +410,14 @@ function formatResult(r) {
       ),
 
     total:
-      formatNumber(r.total),
+      formatNumber(
+        r.total
+      ),
 
     doctorFee:
-      formatNumber(r.doctorFee),
+      formatNumber(
+        r.doctorFee
+      ),
 
     hospitalNursing:
       formatNumber(
@@ -367,7 +425,9 @@ function formatResult(r) {
       ),
 
     other:
-      formatNumber(r.other),
+      formatNumber(
+        r.other
+      ),
 
     items:
       r.items || [],
@@ -406,7 +466,9 @@ async function findByBN({
     )
 
   const searchBN =
-    normalizeSearch(bn)
+    normalizeSearch(
+      bn
+    )
 
   const matchedRows =
     filteredRows.filter(
@@ -466,7 +528,9 @@ async function findByHN({
     )
 
   const searchHN =
-    normalizeSearch(hn)
+    normalizeSearch(
+      hn
+    )
 
   const list = []
 
@@ -480,10 +544,13 @@ async function findByHN({
       filteredRows[i]
 
     const rowHN =
-      normalizeSearch(r.hn)
+      normalizeSearch(
+        r.hn
+      )
 
     if (
-      rowHN !== searchHN
+      rowHN !==
+      searchHN
     ) {
       continue
     }
@@ -493,7 +560,8 @@ async function findByHN({
     )
 
     if (
-      list.length >= MAX_RESULT
+      list.length >=
+      MAX_RESULT
     ) {
       break
     }
@@ -541,7 +609,9 @@ async function findByName({
     )
 
   const searchName =
-    normalizeSearch(name)
+    normalizeSearch(
+      name
+    )
 
   const matchedRows =
     filteredRows.filter(
@@ -549,7 +619,9 @@ async function findByName({
 
         return (
           normalizeSearch(r.name)
-            .includes(searchName)
+            .includes(
+              searchName
+            )
         )
 
       }
@@ -593,20 +665,18 @@ async function findByDate({
     )
   }
 
+
   // ==================================================
-  // รองรับทั้ง:
-  //
-  // 31
-  // 31/08/2026
-  // 31-08-2026
+  // PARSE DAY
   // ==================================================
+
+  const dateText =
+    cleanText(date)
 
   let day = ''
 
-  const dateText =
-    String(date)
-      .trim()
 
+  // 31/08/2026
   let match =
     dateText.match(
       /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
@@ -618,26 +688,32 @@ async function findByDate({
       String(match[1])
         .padStart(2, '0')
 
-  } else {
-
-    match =
-      dateText.match(
-        /^\d{1,2}$/
-      )
-
-    if (!match) {
-      throw new Error(
-        'Invalid date. Use DD or DD/MM/YYYY'
-      )
-    }
-
-    day =
-      String(match[0])
-        .padStart(2, '0')
   }
 
+  // 31
+  else if (
+    /^\d{1,2}$/.test(
+      dateText
+    )
+  ) {
+
+    day =
+      String(dateText)
+        .padStart(2, '0')
+
+  }
+
+  else {
+
+    throw new Error(
+      'Invalid date. Use DD or DD/MM/YYYY'
+    )
+
+  }
+
+
   // ==================================================
-  // เดือน / ปี มาจาก search_month / search_year
+  // TARGET MONTH / YEAR
   // ==================================================
 
   const targetMonth =
@@ -649,8 +725,9 @@ async function findByDate({
     String(year || '')
       .trim()
 
+
   // ==================================================
-  // ดึงข้อมูลเดือน / ปี
+  // FILTER EMPLOYEE + MONTH + YEAR
   // ==================================================
 
   const filteredRows =
@@ -659,6 +736,7 @@ async function findByDate({
       targetMonth,
       targetYear
     )
+
 
   console.log(
     'SEARCH DATE:',
@@ -672,8 +750,9 @@ async function findByDate({
     }
   )
 
+
   // ==================================================
-  // เทียบเฉพาะวัน
+  // FIND DAY
   // ==================================================
 
   const matchedRows =
@@ -689,27 +768,59 @@ async function findByDate({
           return false
         }
 
+
         const parts =
           rowDate.split('/')
 
-        if (parts.length !== 3) {
+        if (
+          parts.length !== 3
+        ) {
           return false
         }
+
 
         const rowDay =
           String(parts[0])
             .padStart(2, '0')
 
+
+        console.log(
+          'COMPARE DATE:',
+          {
+            raw:
+              r.dateText,
+
+            normalized:
+              rowDate,
+
+            rowDay,
+
+            targetDay:
+              day,
+
+            bn:
+              r.bn
+          }
+        )
+
+
         return (
           rowDay === day
         )
+
       }
     )
+
+
+  // ==================================================
+  // FORMAT
+  // ==================================================
 
   const list =
     matchedRows
       .slice(0, MAX_RESULT)
       .map(formatResult)
+
 
   console.log(
     'SEARCH DATE RESULT:',
@@ -717,10 +828,14 @@ async function findByDate({
       date:
         `${day}/${targetMonth}/${targetYear}`,
 
+      filtered:
+        filteredRows.length,
+
       matched:
         matchedRows.length
     }
   )
+
 
   return {
 
@@ -752,100 +867,26 @@ async function countByDateReceipt({
   date
 }) {
 
-  if (!date) {
-    throw new Error(
-      'date is required'
-    )
-  }
-
-  const dateText =
-    String(date)
-      .trim()
-
-  let day = ''
-
-  const fullDate =
-    dateText.match(
-      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
-    )
-
-  if (fullDate) {
-
-    day =
-      String(fullDate[1])
-        .padStart(2, '0')
-
-  } else {
-
-    if (
-      !/^\d{1,2}$/.test(
-        dateText
-      )
-    ) {
-      throw new Error(
-        'Invalid date'
-      )
-    }
-
-    day =
-      String(dateText)
-        .padStart(2, '0')
-  }
-
-  const targetMonth =
-    String(month)
-      .padStart(2, '0')
-
-  const targetYear =
-    String(year)
-
-  const filteredRows =
-    await getFilteredRows(
+  const result =
+    await findByDate({
       employeeCode,
-      targetMonth,
-      targetYear
-    )
-
-  const matchedRows =
-    filteredRows.filter(
-      function (r) {
-
-        const rowDate =
-          toDateShort(
-            r.dateText
-          )
-
-        if (!rowDate) {
-          return false
-        }
-
-        const parts =
-          rowDate.split('/')
-
-        if (parts.length !== 3) {
-          return false
-        }
-
-        const rowDay =
-          String(parts[0])
-            .padStart(2, '0')
-
-        return rowDay === day
-      }
-    )
+      month,
+      year,
+      date
+    })
 
   return {
 
     ok: true,
 
     found:
-      matchedRows.length > 0,
+      result.found,
 
     count:
-      matchedRows.length,
+      result.count,
 
     date:
-      `${day}/${targetMonth}/${targetYear}`
+      result.date
 
   }
 }
@@ -923,12 +964,17 @@ function formatNumber(value) {
   }
 
   const clean =
-    text.replace(/,/g, '')
+    text
+      .replace(/,/g, '')
+      .replace(/บาท/g, '')
+      .trim()
 
   const number =
     Number(clean)
 
-  if (isNaN(number)) {
+  if (
+    isNaN(number)
+  ) {
     return text
   }
 
@@ -963,6 +1009,11 @@ function toDateShort(dateValue) {
       return ''
     }
 
+
+    // ==================================================
+    // JS DATE OBJECT
+    // ==================================================
+
     if (
       Object.prototype.toString.call(
         dateValue
@@ -977,29 +1028,18 @@ function toDateShort(dateValue) {
         return ''
       }
 
-      const dd =
-        String(
-          dateValue.getDate()
-        ).padStart(2, '0')
-
-      const mm =
-        String(
-          dateValue.getMonth() + 1
-        ).padStart(2, '0')
-
-      const yyyy =
-        String(
-          dateValue.getFullYear()
-        )
-
-      return (
-        dd +
-        '/' +
-        mm +
-        '/' +
-        yyyy
+      return normalizeDate(
+        dateValue.getDate(),
+        dateValue.getMonth() + 1,
+        dateValue.getFullYear()
       )
+
     }
+
+
+    // ==================================================
+    // STRING
+    // ==================================================
 
     const s =
       String(dateValue)
@@ -1008,6 +1048,11 @@ function toDateShort(dateValue) {
     if (!s) {
       return ''
     }
+
+
+    // ==================================================
+    // DD/MM/YYYY
+    // ==================================================
 
     let match =
       s.match(
@@ -1021,7 +1066,13 @@ function toDateShort(dateValue) {
         match[2],
         match[3]
       )
+
     }
+
+
+    // ==================================================
+    // DD-MM-YYYY
+    // ==================================================
 
     match =
       s.match(
@@ -1035,11 +1086,15 @@ function toDateShort(dateValue) {
         match[2],
         match[3]
       )
+
     }
 
+
     // ==================================================
-    // IMPORTANT:
-    // รองรับ 31 August 2026
+    // DD Month YYYY
+    //
+    // 31 August 2026
+    // 31 August, 2026
     // ==================================================
 
     match =
@@ -1057,7 +1112,7 @@ function toDateShort(dateValue) {
 
       const month =
         getMonthNumber(
-          match[2].toLowerCase()
+          match[2]
         )
 
       const year =
@@ -1075,7 +1130,16 @@ function toDateShort(dateValue) {
         month,
         year
       )
+
     }
+
+
+    // ==================================================
+    // Month DD YYYY
+    //
+    // August 31 2026
+    // August 31, 2026
+    // ==================================================
 
     match =
       s.match(
@@ -1086,7 +1150,7 @@ function toDateShort(dateValue) {
 
       const month =
         getMonthNumber(
-          match[1].toLowerCase()
+          match[1]
         )
 
       const day =
@@ -1110,7 +1174,13 @@ function toDateShort(dateValue) {
         month,
         year
       )
+
     }
+
+
+    // ==================================================
+    // YYYY-MM-DD
+    // ==================================================
 
     match =
       s.match(
@@ -1124,7 +1194,54 @@ function toDateShort(dateValue) {
         match[2],
         match[1]
       )
+
     }
+
+
+    // ==================================================
+    // GOOGLE SHEETS SERIAL NUMBER
+    // ==================================================
+
+    if (
+      /^\d+(\.\d+)?$/.test(s)
+    ) {
+
+      const serial =
+        Number(s)
+
+      if (
+        serial > 20000 &&
+        serial < 100000
+      ) {
+
+        const date =
+          new Date(
+            Date.UTC(
+              1899,
+              11,
+              30
+            )
+          )
+
+        date.setUTCDate(
+          date.getUTCDate() +
+          Math.floor(serial)
+        )
+
+        return normalizeDate(
+          date.getUTCDate(),
+          date.getUTCMonth() + 1,
+          date.getUTCFullYear()
+        )
+
+      }
+
+    }
+
+
+    // ==================================================
+    // FALLBACK
+    // ==================================================
 
     const d =
       new Date(s)
@@ -1146,6 +1263,7 @@ function toDateShort(dateValue) {
   } catch (err) {
 
     return ''
+
   }
 }
 
@@ -1161,13 +1279,22 @@ function normalizeDate(
 ) {
 
   const d =
-    parseInt(day, 10)
+    parseInt(
+      day,
+      10
+    )
 
   const m =
-    parseInt(month, 10)
+    parseInt(
+      month,
+      10
+    )
 
   const y =
-    parseInt(year, 10)
+    parseInt(
+      year,
+      10
+    )
 
   if (
     !d ||
@@ -1190,7 +1317,8 @@ function normalizeDate(
 
   if (
     testDate.getFullYear() !== y ||
-    testDate.getMonth() !== m - 1 ||
+    testDate.getMonth() !==
+      m - 1 ||
     testDate.getDate() !== d
   ) {
     return ''
@@ -1216,7 +1344,9 @@ function normalizeDate(
 // MONTH NAME -> NUMBER
 // ==================================================
 
-function getMonthNumber(monthName) {
+function getMonthNumber(
+  monthName
+) {
 
   const months = {
 
@@ -1300,6 +1430,7 @@ function safeParseJson(value) {
   } catch (err) {
 
     return []
+
   }
 }
 
