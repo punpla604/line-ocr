@@ -105,247 +105,6 @@ function getSheets() {
 
 
 // ==================================================
-// CONVERT DATA TO SHEET ROW
-//
-// SHEET COLUMNS
-//
-// A  timestamp
-// B  employeeCode
-// C  doctorID
-// D  doctorName
-// E  bn
-// F  dateText
-// G  timeText
-// H  hn
-// I  name
-// J  paymentType
-// K  vat
-// L  Amount
-// M  Discount
-// N  Discount By Doctor
-// O  total
-// P  doctorFee
-// Q  hospital&nursing
-// R  other
-// S  itemJson
-// T  raw
-// ==================================================
-
-function toSheetRow(data) {
-
-  const itemsJson =
-    JSON.stringify(
-      data.items || []
-    )
-
-  return [
-
-    // A
-    data.timestamp ||
-      new Date().toISOString(),
-
-    // B
-    data.employeeCode || '',
-
-    // C
-    data.doctorID ||
-      data.doctorId ||
-      '',
-
-    // D
-    data.doctorName ||
-      '',
-
-    // E
-    data.bn ||
-      data.receiptNo ||
-      '',
-
-    // F
-    data.receiptDateRaw ||
-      data.dateText ||
-      '',
-
-    // G
-    data.timeText ||
-      '',
-
-    // H
-    data.hn ||
-      '',
-
-    // I
-    data.patientName ||
-      data.name ||
-      '',
-
-    // J
-    data.paymentType ||
-      '',
-
-    // K
-    data.vat ||
-      '',
-
-    // L
-    data.amount ||
-      '',
-
-    // M
-    data.discount ||
-      '',
-
-    // N
-    data.discountByDoctor ||
-      '',
-
-    // O
-    data.total ||
-      '',
-
-    // P
-    data.doctorFee ||
-      '',
-
-    // Q
-    data.hospitalNursing ||
-      '',
-
-    // R
-    data.other ||
-      '',
-
-    // S
-    itemsJson,
-
-    // T
-    data.raw ||
-      ''
-
-  ]
-}
-
-
-// ==================================================
-// SAVE RECEIPT
-// ==================================================
-
-async function saveReceipt(data) {
-
-  if (!data) {
-    throw new Error(
-      'Missing receipt data'
-    )
-  }
-
-  const sheets =
-    getSheets()
-
-  const row =
-    toSheetRow(data)
-
-  try {
-
-    console.log(
-      '=============================='
-    )
-
-    console.log(
-      'GOOGLE SHEET SAVE'
-    )
-
-    console.log(
-      'SHEET ID:',
-      SHEET_ID
-    )
-
-    console.log(
-      'SHEET NAME:',
-      SHEET_NAME
-    )
-
-    console.log(
-      'ROW:',
-      row
-    )
-
-    console.log(
-      '=============================='
-    )
-
-    const response =
-      await sheets.spreadsheets.values.append({
-
-        spreadsheetId:
-          SHEET_ID,
-
-        // A:T เพราะมี 20 columns
-        range:
-          `${SHEET_NAME}!A:T`,
-
-        valueInputOption:
-          'USER_ENTERED',
-
-        insertDataOption:
-          'INSERT_ROWS',
-
-        requestBody: {
-          values: [
-            row
-          ]
-        }
-
-      })
-
-    console.log(
-      'GOOGLE SHEET SAVE SUCCESS'
-    )
-
-    console.log(
-      'UPDATED RANGE:',
-      response.data.updates?.updatedRange
-    )
-
-    console.log(
-      'UPDATED ROWS:',
-      response.data.updates?.updatedRows
-    )
-
-    return response.data
-
-  } catch (err) {
-
-    console.error(
-      'GOOGLE SHEET SAVE ERROR'
-    )
-
-    if (err.response) {
-
-      console.error(
-        'STATUS:',
-        err.response.status
-      )
-
-      console.error(
-        'DATA:',
-        err.response.data
-      )
-
-    } else {
-
-      console.error(
-        'MESSAGE:',
-        err.message
-      )
-
-    }
-
-    throw err
-  }
-}
-
-
-// ==================================================
 // READ SHEET DATA
 // ==================================================
 
@@ -360,7 +119,6 @@ async function readRows() {
       spreadsheetId:
         SHEET_ID,
 
-      // A:T เพราะโครงสร้างใหม่มี 20 columns
       range:
         `${SHEET_NAME}!A${DATA_START_ROW}:T`
 
@@ -372,111 +130,95 @@ async function readRows() {
 
 // ==================================================
 // ROW -> OBJECT
+// ==================================================
 //
-// A  timestamp
-// B  employeeCode
-// C  doctorID
-// D  doctorName
-// E  bn
-// F  dateText
-// G  timeText
-// H  hn
-// I  name
-// J  paymentType
-// K  vat
-// L  amount
-// M  discount
-// N  discountByDoctor
-// O  total
-// P  doctorFee
-// Q  hospitalNursing
-// R  other
-// S  items
-// T  raw
+// Sheet:
+//
+// A timestamp
+// B employeeCode
+// C doctorID
+// D doctorName
+// E bn
+// F dateText
+// G timeText
+// H hn
+// I name
+// J paymentType
+// K vat
+// L Amount
+// M Discount
+// N Discount By Doctor
+// O total
+// P doctorFee
+// Q hospital&nursing
+// R other
+// S itemJson
+// T raw
+//
 // ==================================================
 
 function rowToObject(r) {
 
   return {
 
-    // A
     timestamp:
       r[0] || '',
 
-    // B
     employeeCode:
       cleanText(r[1])
         .toUpperCase(),
 
-    // C
     doctorID:
       cleanText(r[2]),
 
-    // D
     doctorName:
       cleanText(r[3]),
 
-    // E
     bn:
       cleanText(r[4]),
 
-    // F
     dateText:
       r[5] || '',
 
-    // G
     timeText:
       cleanText(r[6]),
 
-    // H
     hn:
       cleanText(r[7]),
 
-    // I
     name:
       cleanText(r[8]),
 
-    // J
     paymentType:
       cleanText(r[9]),
 
-    // K
     vat:
       cleanText(r[10]),
 
-    // L
     amount:
       cleanText(r[11]),
 
-    // M
     discount:
       cleanText(r[12]),
 
-    // N
     discountByDoctor:
       cleanText(r[13]),
 
-    // O
     total:
       cleanText(r[14]),
 
-    // P
     doctorFee:
       cleanText(r[15]),
 
-    // Q
     hospitalNursing:
       cleanText(r[16]),
 
-    // R
     other:
       cleanText(r[17]),
 
-    // S
     items:
       safeParseJson(r[18]),
 
-    // T
     raw:
       cleanText(r[19])
 
@@ -539,6 +281,10 @@ async function getFilteredRows(
       const parts =
         shortDate.split('/')
 
+      if (parts.length !== 3) {
+        return false
+      }
+
       if (
         parts[1] !==
         normalizedMonth
@@ -566,16 +312,8 @@ function formatResult(r) {
 
   return {
 
-    // ==================================================
-    // DOCUMENT
-    // ==================================================
-
     bn:
       cleanText(r.bn),
-
-    // ==================================================
-    // DOCTOR
-    // ==================================================
 
     doctorID:
       cleanText(r.doctorID),
@@ -583,19 +321,11 @@ function formatResult(r) {
     doctorName:
       cleanText(r.doctorName),
 
-    // ==================================================
-    // PATIENT
-    // ==================================================
-
     hn:
       cleanText(r.hn),
 
     name:
       cleanText(r.name),
-
-    // ==================================================
-    // DATE / TIME
-    // ==================================================
 
     dateText:
       r.dateText || '',
@@ -608,19 +338,11 @@ function formatResult(r) {
     timeText:
       cleanText(r.timeText),
 
-    // ==================================================
-    // PAYMENT
-    // ==================================================
-
     paymentType:
       cleanText(r.paymentType),
 
     vat:
       cleanText(r.vat),
-
-    // ==================================================
-    // FINANCIAL
-    // ==================================================
 
     amount:
       formatNumber(r.amount),
@@ -647,16 +369,8 @@ function formatResult(r) {
     other:
       formatNumber(r.other),
 
-    // ==================================================
-    // ITEMS
-    // ==================================================
-
     items:
       r.items || [],
-
-    // ==================================================
-    // EMPLOYEE
-    // ==================================================
 
     employeeCode:
       cleanText(
@@ -879,25 +593,65 @@ async function findByDate({
     )
   }
 
-  const day =
+  // ==================================================
+  // รองรับทั้ง:
+  //
+  // 31
+  // 31/08/2026
+  // 31-08-2026
+  // ==================================================
+
+  let day = ''
+
+  const dateText =
     String(date)
+      .trim()
+
+  let match =
+    dateText.match(
+      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
+    )
+
+  if (match) {
+
+    day =
+      String(match[1])
+        .padStart(2, '0')
+
+  } else {
+
+    match =
+      dateText.match(
+        /^\d{1,2}$/
+      )
+
+    if (!match) {
+      throw new Error(
+        'Invalid date. Use DD or DD/MM/YYYY'
+      )
+    }
+
+    day =
+      String(match[0])
+        .padStart(2, '0')
+  }
+
+  // ==================================================
+  // เดือน / ปี มาจาก search_month / search_year
+  // ==================================================
+
+  const targetMonth =
+    String(month || '')
       .trim()
       .padStart(2, '0')
 
-  if (
-    !/^(0[1-9]|[12]\d|3[01])$/.test(day)
-  ) {
-    throw new Error(
-      'Invalid date. Use DD only, for example 01'
-    )
-  }
-
-  const targetMonth =
-    String(month)
-      .padStart(2, '0')
-
   const targetYear =
-    String(year)
+    String(year || '')
+      .trim()
+
+  // ==================================================
+  // ดึงข้อมูลเดือน / ปี
+  // ==================================================
 
   const filteredRows =
     await getFilteredRows(
@@ -905,6 +659,22 @@ async function findByDate({
       targetMonth,
       targetYear
     )
+
+  console.log(
+    'SEARCH DATE:',
+    {
+      employeeCode,
+      targetMonth,
+      targetYear,
+      targetDay: day,
+      filteredCount:
+        filteredRows.length
+    }
+  )
+
+  // ==================================================
+  // เทียบเฉพาะวัน
+  // ==================================================
 
   const matchedRows =
     filteredRows.filter(
@@ -930,7 +700,9 @@ async function findByDate({
           String(parts[0])
             .padStart(2, '0')
 
-        return rowDay === day
+        return (
+          rowDay === day
+        )
       }
     )
 
@@ -938,6 +710,17 @@ async function findByDate({
     matchedRows
       .slice(0, MAX_RESULT)
       .map(formatResult)
+
+  console.log(
+    'SEARCH DATE RESULT:',
+    {
+      date:
+        `${day}/${targetMonth}/${targetYear}`,
+
+      matched:
+        matchedRows.length
+    }
+  )
 
   return {
 
@@ -975,17 +758,38 @@ async function countByDateReceipt({
     )
   }
 
-  const day =
+  const dateText =
     String(date)
       .trim()
-      .padStart(2, '0')
 
-  if (
-    !/^(0[1-9]|[12]\d|3[01])$/.test(day)
-  ) {
-    throw new Error(
-      'Invalid date. Use DD only, for example 01'
+  let day = ''
+
+  const fullDate =
+    dateText.match(
+      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
     )
+
+  if (fullDate) {
+
+    day =
+      String(fullDate[1])
+        .padStart(2, '0')
+
+  } else {
+
+    if (
+      !/^\d{1,2}$/.test(
+        dateText
+      )
+    ) {
+      throw new Error(
+        'Invalid date'
+      )
+    }
+
+    day =
+      String(dateText)
+        .padStart(2, '0')
   }
 
   const targetMonth =
@@ -1233,6 +1037,11 @@ function toDateShort(dateValue) {
       )
     }
 
+    // ==================================================
+    // IMPORTANT:
+    // รองรับ 31 August 2026
+    // ==================================================
+
     match =
       s.match(
         /^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/i
@@ -1241,7 +1050,10 @@ function toDateShort(dateValue) {
     if (match) {
 
       const day =
-        parseInt(match[1], 10)
+        parseInt(
+          match[1],
+          10
+        )
 
       const month =
         getMonthNumber(
@@ -1249,7 +1061,10 @@ function toDateShort(dateValue) {
         )
 
       const year =
-        parseInt(match[3], 10)
+        parseInt(
+          match[3],
+          10
+        )
 
       if (!month) {
         return ''
@@ -1275,10 +1090,16 @@ function toDateShort(dateValue) {
         )
 
       const day =
-        parseInt(match[2], 10)
+        parseInt(
+          match[2],
+          10
+        )
 
       const year =
-        parseInt(match[3], 10)
+        parseInt(
+          match[3],
+          10
+        )
 
       if (!month) {
         return ''
@@ -1438,7 +1259,11 @@ function getMonthNumber(monthName) {
   }
 
   return (
-    months[monthName] || 0
+    months[
+      String(monthName)
+        .toLowerCase()
+        .trim()
+    ] || 0
   )
 }
 
