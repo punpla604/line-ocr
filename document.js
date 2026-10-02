@@ -172,6 +172,33 @@ function formatNumber(value) {
 }
 
 // ==================================================
+// RESET DOCUMENT SESSION
+// ==================================================
+
+function resetDocumentState(
+  state
+) {
+
+  state.mode =
+    'idle'
+
+  state.step =
+    'idle'
+
+  state.employeeCode =
+    ''
+
+  state.doctorID =
+    ''
+
+  state.doctorName =
+    ''
+
+  state.waitingSince =
+    0
+}
+
+// ==================================================
 // LINE REPLY
 // ==================================================
 
@@ -274,231 +301,32 @@ async function replyFlex(
 }
 
 // ==================================================
-// DOCUMENT EMPLOYEE FLEX
+// EMPLOYEE INPUT
 // ==================================================
 
-function buildDocumentEmployeeFlex() {
+function buildEmployeeInputText() {
 
-  return {
-
-    type: 'bubble',
-
-    size: 'mega',
-
-    body: {
-
-      type: 'box',
-
-      layout: 'vertical',
-
-      paddingAll: '20px',
-
-      contents: [
-
-        {
-          type: 'text',
-
-          text: '🧾 ส่งเอกสาร',
-
-          weight: 'bold',
-
-          size: 'xl',
-
-          color: '#111111'
-        },
-
-        {
-          type: 'text',
-
-          text:
-            'กรุณาพิมพ์รหัสพนักงานเพื่อเริ่มส่งเอกสาร',
-
-          size: 'sm',
-
-          color: '#777777',
-
-          margin: 'sm',
-
-          wrap: true
-        },
-
-        {
-          type: 'separator',
-
-          margin: 'xl'
-        },
-
-        {
-          type: 'text',
-
-          text: 'ตัวอย่างรหัสพนักงาน',
-
-          size: 'sm',
-
-          color: '#555555',
-
-          margin: 'lg'
-        },
-
-        {
-          type: 'text',
-
-          text: 'A0001',
-
-          size: 'lg',
-
-          weight: 'bold',
-
-          color: '#0369A1',
-
-          margin: 'xs'
-        }
-
-      ]
-    },
-
-    footer: {
-
-      type: 'box',
-
-      layout: 'vertical',
-
-      spacing: 'sm',
-
-      contents: [
-
-        {
-          type: 'button',
-
-          style: 'secondary',
-
-          action: {
-
-            type: 'message',
-
-            label: '❌ ยกเลิก',
-
-            text: 'ยกเลิก'
-          }
-        }
-
-      ]
-    }
-  }
+  return (
+    '🧾 ส่งเอกสาร\n\n' +
+    'กรุณาพิมพ์รหัสพนักงานครับ\n\n' +
+    'ตัวอย่าง: A0001\n' +
+    'รองรับ A0001 - A2000'
+  )
 }
 
 // ==================================================
-// DOCTOR INPUT FLEX
+// DOCTOR INPUT
 // ==================================================
 
-function buildDoctorInputFlex(
+function buildDoctorInputText(
   employeeCode
 ) {
 
-  return {
-
-    type: 'bubble',
-
-    size: 'mega',
-
-    body: {
-
-      type: 'box',
-
-      layout: 'vertical',
-
-      paddingAll: '20px',
-
-      contents: [
-
-        {
-          type: 'text',
-
-          text: '🩺 ข้อมูลแพทย์',
-
-          weight: 'bold',
-
-          size: 'xl',
-
-          color: '#111111'
-        },
-
-        {
-          type: 'text',
-
-          text:
-            `👤 พนักงาน: ${employeeCode}`,
-
-          size: 'sm',
-
-          color: '#555555',
-
-          margin: 'md'
-        },
-
-        {
-          type: 'separator',
-
-          margin: 'lg'
-        },
-
-        {
-          type: 'text',
-
-          text:
-            'กรุณาพิมพ์ Doctor ID',
-
-          size: 'md',
-
-          weight: 'bold',
-
-          margin: 'lg'
-        },
-
-        {
-          type: 'text',
-
-          text:
-            'ระบบจะตรวจสอบกับข้อมูลแพทย์ใน Sheet4',
-
-          size: 'sm',
-
-          color: '#777777',
-
-          margin: 'sm',
-
-          wrap: true
-        }
-
-      ]
-    },
-
-    footer: {
-
-      type: 'box',
-
-      layout: 'vertical',
-
-      contents: [
-
-        {
-          type: 'button',
-
-          style: 'secondary',
-
-          action: {
-
-            type: 'message',
-
-            label: '❌ ยกเลิก',
-
-            text: 'ยกเลิก'
-          }
-        }
-
-      ]
-    }
-  }
+  return (
+    '🩺 กรุณาพิมพ์ Doctor ID\n\n' +
+    `👤 พนักงาน: ${employeeCode}\n\n` +
+    'ระบบจะตรวจสอบ Doctor ID กับข้อมูลใน Sheet4 ครับ'
+  )
 }
 
 // ==================================================
@@ -1107,7 +935,7 @@ function buildDocumentSuccessFlex(
           type: 'text',
 
           text:
-            'ส่งรูปใบเสร็จถัดไปได้เลยครับ 🧾',
+            'ต้องการส่งใบเสร็จใบถัดไปไหมครับ?',
 
           size: 'sm',
 
@@ -1146,7 +974,7 @@ function buildDocumentSuccessFlex(
 
             type: 'message',
 
-            label: '🧾 ส่งรูปถัดไป',
+            label: '🧾 ส่งใบถัดไป',
 
             text: 'ส่งรูปถัดไป'
           }
@@ -1389,12 +1217,10 @@ async function startDocument(
   state.waitingSince =
     Date.now()
 
-  await context.replyFlex(
+  await context.reply(
     event.replyToken,
 
-    '🧾 ส่งเอกสาร',
-
-    buildDocumentEmployeeFlex()
+    buildEmployeeInputText()
   )
 }
 
@@ -1433,15 +1259,12 @@ async function handleDocumentText(
       )
     ) {
 
-      await context.replyFlex(
+      await context.reply(
 
         event.replyToken,
 
-        '❌ รหัสพนักงานไม่ถูกต้อง',
-
-        buildImageErrorFlex(
-          'รูปแบบรหัสพนักงานต้องเป็น A0001 - A2000 ครับ\nกรุณาพิมพ์รหัสใหม่อีกครั้ง'
-        )
+        '❌ รหัสพนักงานไม่ถูกต้อง\n\n' +
+        'กรุณาพิมพ์รหัสในรูปแบบ A0001 - A2000 ครับ'
       )
 
       return true
@@ -1462,13 +1285,11 @@ async function handleDocumentText(
     state.waitingSince =
       Date.now()
 
-    await context.replyFlex(
+    await context.reply(
 
       event.replyToken,
 
-      '🩺 กรุณาใส่ Doctor ID',
-
-      buildDoctorInputFlex(
+      buildDoctorInputText(
         employeeCode
       )
     )
@@ -1482,7 +1303,9 @@ async function handleDocumentText(
 
   if (
     state.step ===
-    'waitingDoctorID'
+    'waitingDoctorID' ||
+    state.step ===
+    'waitingNextDoctorID'
   ) {
 
     const doctorID =
@@ -1492,15 +1315,11 @@ async function handleDocumentText(
 
     if (!doctorID) {
 
-      await context.replyFlex(
+      await context.reply(
 
         event.replyToken,
 
-        '❌ กรุณาใส่ Doctor ID',
-
-        buildImageErrorFlex(
-          'กรุณาพิมพ์ Doctor ID เพื่อให้ระบบตรวจสอบกับ Sheet4 ครับ'
-        )
+        '❌ กรุณาพิมพ์ Doctor ID ครับ'
       )
 
       return true
@@ -1515,129 +1334,13 @@ async function handleDocumentText(
 
       if (!doctor) {
 
-        await context.replyFlex(
+        await context.reply(
 
           event.replyToken,
 
-          '❌ ไม่พบรหัสแพทย์',
-
-          {
-            type: 'bubble',
-
-            size: 'mega',
-
-            body: {
-
-              type: 'box',
-
-              layout: 'vertical',
-
-              paddingAll: '20px',
-
-              contents: [
-
-                {
-                  type: 'text',
-
-                  text:
-                    '❌ ไม่พบรหัสแพทย์',
-
-                  weight: 'bold',
-
-                  size: 'xl',
-
-                  color: '#DC2626'
-                },
-
-                {
-                  type: 'text',
-
-                  text:
-                    `Doctor ID: ${doctorID}`,
-
-                  size: 'md',
-
-                  margin: 'lg',
-
-                  color: '#111111'
-                },
-
-                {
-                  type: 'text',
-
-                  text:
-                    'ไม่พบข้อมูล Doctor ID นี้ใน Sheet4',
-
-                  size: 'sm',
-
-                  color: '#777777',
-
-                  margin: 'sm',
-
-                  wrap: true
-                },
-
-                {
-                  type: 'text',
-
-                  text:
-                    'กรุณาตรวจสอบแล้วใส่ Doctor ID ใหม่ครับ',
-
-                  size: 'sm',
-
-                  color: '#555555',
-
-                  margin: 'lg',
-
-                  wrap: true
-                }
-
-              ]
-            },
-
-            footer: {
-
-              type: 'box',
-
-              layout: 'vertical',
-
-              spacing: 'sm',
-
-              contents: [
-
-                {
-                  type: 'button',
-
-                  style: 'primary',
-
-                  action: {
-
-                    type: 'message',
-
-                    label: '✏️ ใส่ Doctor ID ใหม่',
-
-                    text: 'แก้ไข Doctor ID'
-                  }
-                },
-
-                {
-                  type: 'button',
-
-                  style: 'secondary',
-
-                  action: {
-
-                    type: 'message',
-
-                    label: '❌ ยกเลิก',
-
-                    text: 'ยกเลิก'
-                  }
-                }
-
-              ]
-            }
-          }
+          '❌ ไม่พบ Doctor ID นี้ใน Sheet4\n\n' +
+          `Doctor ID: ${doctorID}\n\n` +
+          'กรุณาตรวจสอบแล้วพิมพ์ Doctor ID ใหม่ครับ'
         )
 
         state.waitingSince =
@@ -1682,15 +1385,12 @@ async function handleDocumentText(
         error.message
       )
 
-      await context.replyFlex(
+      await context.reply(
 
         event.replyToken,
 
-        '⚠️ ตรวจสอบ Doctor ID ไม่สำเร็จ',
-
-        buildImageErrorFlex(
-          'ระบบไม่สามารถตรวจสอบข้อมูลแพทย์จาก Sheet4 ได้ครับ\nกรุณาลองใหม่อีกครั้ง'
-        )
+        '⚠️ ระบบไม่สามารถตรวจสอบ Doctor ID จาก Sheet4 ได้ครับ\n\n' +
+        'กรุณาลองใหม่อีกครั้ง'
       )
     }
 
@@ -1739,32 +1439,36 @@ async function handleDocumentText(
       'ส่งรูปถัดไป'
     ) {
 
+      state.doctorID =
+        ''
+
+      state.doctorName =
+        ''
+
+      state.step =
+        'waitingNextDoctorID'
+
       state.waitingSince =
         Date.now()
 
-      await context.replyFlex(
+      await context.reply(
 
         event.replyToken,
 
-        '📷 พร้อมรับรูปถัดไป',
-
-        buildWaitingImageFlex(
-          state
-        )
+        '🩺 ส่งใบเสร็จใบถัดไป\n\n' +
+        `👤 พนักงาน: ${state.employeeCode}\n\n` +
+        'กรุณาพิมพ์ Doctor ID ใหม่ครับ'
       )
 
       return true
     }
 
-    await context.replyFlex(
+    await context.reply(
 
       event.replyToken,
 
-      '📷 รอรูปใบเสร็จ',
-
-      buildWaitingImageFlex(
-        state
-      )
+      '📷 ตอนนี้ระบบกำลังรอรูปใบเสร็จครับ\n\n' +
+      'กรุณาส่งรูปใบเสร็จได้เลยครับ'
     )
 
     return true
@@ -1810,15 +1514,11 @@ async function handleDocumentPostback(
       !state.doctorName
     ) {
 
-      await context.replyFlex(
+      await context.reply(
 
         event.replyToken,
 
-        '❌ ข้อมูลไม่ครบ',
-
-        buildImageErrorFlex(
-          'ข้อมูลพนักงานหรือข้อมูลแพทย์ไม่ครบครับ กรุณาเริ่มใหม่'
-        )
+        '❌ ข้อมูลไม่ครบครับ\nกรุณาเริ่มขั้นตอนใหม่'
       )
 
       return true
@@ -1845,7 +1545,7 @@ async function handleDocumentPostback(
   }
 
   // ==================================================
-  // EDIT
+  // EDIT DOCTOR
   // ==================================================
 
   if (
@@ -1865,13 +1565,11 @@ async function handleDocumentPostback(
     state.waitingSince =
       Date.now()
 
-    await context.replyFlex(
+    await context.reply(
 
       event.replyToken,
 
-      '✏️ แก้ไข Doctor ID',
-
-      buildDoctorInputFlex(
+      buildDoctorInputText(
         state.employeeCode
       )
     )
@@ -1898,15 +1596,11 @@ async function handleDocumentImage(
 
   if (!messageId) {
 
-    await context.replyFlex(
+    await context.reply(
 
       event.replyToken,
 
-      '❌ ไม่พบรูป',
-
-      buildImageErrorFlex(
-        'ไม่พบ message ID ของรูปจาก LINE ครับ\nกรุณาส่งรูปใหม่อีกครั้ง'
-      )
+      '❌ ไม่พบ message ID ของรูปจาก LINE ครับ\nกรุณาส่งรูปใหม่อีกครั้ง'
     )
 
     return true
@@ -1920,15 +1614,12 @@ async function handleDocumentImage(
     !state.doctorName
   ) {
 
-    await context.replyFlex(
+    await context.reply(
 
       event.replyToken,
 
-      '❌ ยังไม่พร้อมรับรูป',
-
-      buildImageErrorFlex(
-        'กรุณาพิมพ์ "ส่งเอกสาร" แล้วกรอกรหัสพนักงานและยืนยันข้อมูลแพทย์ก่อนครับ'
-      )
+      '❌ ยังไม่พร้อมรับรูปครับ\n\n' +
+      'กรุณากรอกรหัสพนักงาน → Doctor ID → ยืนยันข้อมูลแพทย์ก่อนครับ'
     )
 
     return true
@@ -1940,30 +1631,17 @@ async function handleDocumentImage(
     )
   ) {
 
-    state.mode =
-      'idle'
+    resetDocumentState(
+      state
+    )
 
-    state.step =
-      'idle'
-
-    state.employeeCode =
-      ''
-
-    state.doctorID =
-      ''
-
-    state.doctorName =
-      ''
-
-    await context.replyFlex(
+    await context.reply(
 
       event.replyToken,
 
-      '⏱️ หมดเวลา',
-
-      buildImageErrorFlex(
-        'รอรูปเกิน 1 นาทีแล้วครับ\nกรุณาพิมพ์ "ส่งเอกสาร" เพื่อเริ่มใหม่'
-      )
+      '⏱️ หมดเวลา\n\n' +
+      'รอรูปเกิน 1 นาทีแล้วครับ\n' +
+      'กรุณาพิมพ์ "ส่งเอกสาร" เพื่อเริ่มใหม่'
     )
 
     return true
@@ -2105,11 +1783,18 @@ async function handleDocumentImage(
     )
 
     // ==================================================
-    // KEEP SESSION
+    // KEEP EMPLOYEE
     // ==================================================
 
     state.waitingSince =
       Date.now()
+
+    // สำคัญ:
+    // หลังบันทึกสำเร็จยังอยู่ใน waitingImage
+    // แต่เมื่อกด "ส่งรูปถัดไป"
+    // จะเปลี่ยนไปถาม Doctor ID ใหม่
+    state.step =
+      'waitingImage'
 
     // ==================================================
     // SUCCESS FLEX
@@ -2143,15 +1828,13 @@ async function handleDocumentImage(
       error.message
     )
 
-    await context.replyFlex(
+    await context.reply(
 
       event.replyToken,
 
-      '⚠️ เกิดข้อผิดพลาด',
-
-      buildImageErrorFlex(
-        'ระบบไม่สามารถประมวลผลใบเสร็จได้ครับ\nกรุณาลองส่งรูปใหม่อีกครั้ง'
-      )
+      '⚠️ เกิดข้อผิดพลาด\n\n' +
+      'ระบบไม่สามารถประมวลผลใบเสร็จได้ครับ\n' +
+      'กรุณาลองส่งรูปใหม่อีกครั้ง'
     )
 
     return true
@@ -2171,8 +1854,6 @@ module.exports = {
   handleDocumentPostback,
 
   handleDocumentImage,
-
-  buildDocumentEmployeeFlex,
 
   buildDoctorConfirmFlex,
 
