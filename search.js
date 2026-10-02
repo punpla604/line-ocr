@@ -105,10 +105,10 @@ function getSheets() {
 
 
 // ==================================================
-// READ SHEET DATA
+// READ SHEET
 // ==================================================
 
-async function readRows() {
+async function readSheet() {
 
   const sheets =
     getSheets()
@@ -120,155 +120,353 @@ async function readRows() {
         SHEET_ID,
 
       range:
-        `${SHEET_NAME}!A${DATA_START_ROW}:T`,
+        `${SHEET_NAME}!A:T`,
 
-      // ใช้ค่าที่แสดงใน Google Sheet
       valueRenderOption:
         'FORMATTED_VALUE'
+
     })
 
-  const rows =
-    response.data.values || []
+  return response.data.values || []
+}
 
-  console.log(
-    'GOOGLE SHEET READ:',
-    {
-      rows:
-        rows.length,
 
-      firstRow:
-        rows[0] || []
+// ==================================================
+// NORMALIZE HEADER
+// ==================================================
+
+function normalizeHeader(value) {
+
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/[\s_\-&]+/g, '')
+}
+
+
+// ==================================================
+// HEADER -> INDEX
+// ==================================================
+
+function getColumnMap(header) {
+
+  const map = {}
+
+  header.forEach(
+    function (value, index) {
+
+      const key =
+        normalizeHeader(value)
+
+      if (key) {
+        map[key] = index
+      }
+
     }
   )
 
-  return rows
+  return map
+}
+
+
+// ==================================================
+// GET COLUMN
+// ==================================================
+
+function getColumn(row, map, names) {
+
+  for (
+    let i = 0;
+    i < names.length;
+    i++
+  ) {
+
+    const key =
+      normalizeHeader(
+        names[i]
+      )
+
+    if (
+      map[key] !== undefined
+    ) {
+
+      return cleanText(
+        row[map[key]]
+      )
+
+    }
+
+  }
+
+  return ''
+}
+
+
+// ==================================================
+// READ DATA ROWS
+// ==================================================
+
+async function readRows() {
+
+  const allRows =
+    await readSheet()
+
+  if (
+    !allRows.length
+  ) {
+    return []
+  }
+
+  const header =
+    allRows[0]
+
+  const map =
+    getColumnMap(header)
+
+  console.log(
+    'GOOGLE SHEET HEADER:',
+    header
+  )
+
+  console.log(
+    'GOOGLE SHEET COLUMN MAP:',
+    map
+  )
+
+  const dataRows =
+    allRows.slice(
+      DATA_START_ROW - 1
+    )
+
+  return dataRows.map(
+    function (row) {
+
+      return rowToObject(
+        row,
+        map
+      )
+
+    }
+  )
 }
 
 
 // ==================================================
 // ROW -> OBJECT
 // ==================================================
-//
-// A timestamp
-// B employeeCode
-// C doctorID
-// D doctorName
-// E bn
-// F dateText
-// G timeText
-// H hn
-// I name
-// J paymentType
-// K vat
-// L Amount
-// M Discount
-// N Discount By Doctor
-// O total
-// P doctorFee
-// Q hospital&nursing
-// R other
-// S itemJson
-// T raw
-//
-// ==================================================
 
-function rowToObject(r) {
+function rowToObject(row, map) {
 
-  const result = {
+  return {
 
     timestamp:
-      cleanText(r[0]),
+      getColumn(
+        row,
+        map,
+        [
+          'timestamp'
+        ]
+      ),
 
     employeeCode:
-      cleanText(r[1])
-        .toUpperCase(),
-
-    // ==================================================
-    // IMPORTANT
-    // C = doctorID
-    // D = doctorName
-    // ==================================================
+      getColumn(
+        row,
+        map,
+        [
+          'employeeCode',
+          'employee code'
+        ]
+      ).toUpperCase(),
 
     doctorID:
-      cleanText(r[2]),
+      getColumn(
+        row,
+        map,
+        [
+          'doctorID',
+          'doctorId',
+          'doctor id',
+          'doctorCode',
+          'doctor code'
+        ]
+      ),
 
     doctorName:
-      cleanText(r[3]),
+      getColumn(
+        row,
+        map,
+        [
+          'doctorName',
+          'doctor name'
+        ]
+      ),
 
     bn:
-      cleanText(r[4]),
+      getColumn(
+        row,
+        map,
+        [
+          'bn',
+          'receiptNo',
+          'receipt no'
+        ]
+      ),
 
     dateText:
-      cleanText(r[5]),
+      getColumn(
+        row,
+        map,
+        [
+          'dateText',
+          'date',
+          'receiptDate',
+          'receipt date'
+        ]
+      ),
 
     timeText:
-      cleanText(r[6]),
+      getColumn(
+        row,
+        map,
+        [
+          'timeText',
+          'time'
+        ]
+      ),
 
     hn:
-      cleanText(r[7]),
+      getColumn(
+        row,
+        map,
+        [
+          'hn'
+        ]
+      ),
 
     name:
-      cleanText(r[8]),
+      getColumn(
+        row,
+        map,
+        [
+          'name',
+          'patientName',
+          'patient name'
+        ]
+      ),
 
     paymentType:
-      cleanText(r[9]),
+      getColumn(
+        row,
+        map,
+        [
+          'paymentType',
+          'payment type'
+        ]
+      ),
 
     vat:
-      cleanText(r[10]),
+      getColumn(
+        row,
+        map,
+        [
+          'vat'
+        ]
+      ),
 
     amount:
-      cleanText(r[11]),
+      getColumn(
+        row,
+        map,
+        [
+          'amount'
+        ]
+      ),
 
     discount:
-      cleanText(r[12]),
+      getColumn(
+        row,
+        map,
+        [
+          'discount'
+        ]
+      ),
 
     discountByDoctor:
-      cleanText(r[13]),
+      getColumn(
+        row,
+        map,
+        [
+          'discountByDoctor',
+          'discount by doctor'
+        ]
+      ),
 
     total:
-      cleanText(r[14]),
+      getColumn(
+        row,
+        map,
+        [
+          'total'
+        ]
+      ),
 
     doctorFee:
-      cleanText(r[15]),
+      getColumn(
+        row,
+        map,
+        [
+          'doctorFee',
+          'doctor fee'
+        ]
+      ),
 
     hospitalNursing:
-      cleanText(r[16]),
+      getColumn(
+        row,
+        map,
+        [
+          'hospitalNursing',
+          'hospital&nursing',
+          'hospital nursing'
+        ]
+      ),
 
     other:
-      cleanText(r[17]),
+      getColumn(
+        row,
+        map,
+        [
+          'other'
+        ]
+      ),
 
     items:
-      safeParseJson(r[18]),
+      safeParseJson(
+        getColumn(
+          row,
+          map,
+          [
+            'itemJson',
+            'item json',
+            'items'
+          ]
+        )
+      ),
 
     raw:
-      cleanText(r[19])
+      getColumn(
+        row,
+        map,
+        [
+          'raw'
+        ]
+      )
 
   }
-
-  // ==================================================
-  // DEBUG
-  // ==================================================
-
-  /*
-  console.log(
-    'ROW MAP:',
-    {
-      employeeCode: result.employeeCode,
-      doctorID: result.doctorID,
-      doctorName: result.doctorName,
-      bn: result.bn,
-      dateText: result.dateText
-    }
-  )
-  */
-
-  return result
 }
 
 
 // ==================================================
-// GET ROWS
-// Employee + Month + Year
+// FILTER EMPLOYEE + MONTH + YEAR
 // ==================================================
 
 async function getFilteredRows(
@@ -280,117 +478,95 @@ async function getFilteredRows(
   const rows =
     await readRows()
 
-  const normalizedEmployee =
+  const targetEmployee =
     normalizeSearch(
       employeeCode
     )
 
-  const normalizedMonth =
+  const targetMonth =
     String(month || '')
       .trim()
       .padStart(2, '0')
 
-  const normalizedYear =
+  const targetYear =
     String(year || '')
       .trim()
 
   const result = []
 
-  rows
-    .map(rowToObject)
-    .forEach(function (r) {
+  for (
+    let i = 0;
+    i < rows.length;
+    i++
+  ) {
 
-      // ==================================================
-      // EMPLOYEE
-      // ==================================================
+    const r =
+      rows[i]
 
-      if (
-        normalizeSearch(
-          r.employeeCode
-        ) !==
-        normalizedEmployee
-      ) {
-        return
-      }
+    if (
+      normalizeSearch(
+        r.employeeCode
+      ) !==
+      targetEmployee
+    ) {
+      continue
+    }
 
+    const parsedDate =
+      parseSheetDate(
+        r.dateText
+      )
 
-      // ==================================================
-      // DATE
-      // ==================================================
+    if (!parsedDate) {
 
-      const shortDate =
-        toDateShort(
-          r.dateText
-        )
+      console.log(
+        'INVALID DATE:',
+        {
+          row: i + DATA_START_ROW,
+          raw:
+            r.dateText,
+          bn:
+            r.bn
+        }
+      )
 
-      if (!shortDate) {
+      continue
+    }
 
-        console.log(
-          'SKIP INVALID DATE:',
-          {
-            bn:
-              r.bn,
+    if (
+      parsedDate.month !==
+      targetMonth
+    ) {
+      continue
+    }
 
-            rawDate:
-              r.dateText,
+    if (
+      parsedDate.year !==
+      targetYear
+    ) {
+      continue
+    }
 
-            employeeCode:
-              r.employeeCode
-          }
-        )
+    result.push({
+      ...r,
 
-        return
-      }
-
-
-      const parts =
-        shortDate.split('/')
-
-      if (
-        parts.length !== 3
-      ) {
-        return
-      }
-
-
-      const rowMonth =
-        parts[1]
-
-      const rowYear =
-        parts[2]
-
-
-      if (
-        rowMonth !==
-        normalizedMonth
-      ) {
-        return
-      }
-
-
-      if (
-        rowYear !==
-        normalizedYear
-      ) {
-        return
-      }
-
-
-      result.push(r)
-
+      _date:
+        parsedDate
     })
 
+  }
+
   console.log(
-    'FILTERED ROWS:',
+    'FILTER RESULT:',
     {
       employeeCode:
-        normalizedEmployee,
+        targetEmployee,
 
       month:
-        normalizedMonth,
+        targetMonth,
 
       year:
-        normalizedYear,
+        targetYear,
 
       count:
         result.length
@@ -422,35 +598,17 @@ function formatResult(r) {
     bn:
       cleanText(r.bn),
 
-    // ==================================================
-    // Doctor
-    // ==================================================
-
     doctorID:
+      doctorID || '-',
 
-      doctorID ||
-
-      '-',
-
-    // alias เผื่อ frontend ใช้ doctorCode
     doctorCode:
-
-      doctorID ||
-
-      '-',
+      doctorID || '-',
 
     doctorName:
+      doctorName || '-',
 
-      doctorName ||
-
-      '-',
-
-    // alias เผื่อ frontend ใช้ doctor
     doctor:
-
-      doctorName ||
-
-      '-',
+      doctorName || '-',
 
     hn:
       cleanText(r.hn),
@@ -462,9 +620,11 @@ function formatResult(r) {
       cleanText(r.dateText),
 
     dateShort:
-      toDateShort(
-        r.dateText
-      ),
+      r._date
+        ? r._date.short
+        : toDateShort(
+            r.dateText
+          ),
 
     timeText:
       cleanText(r.timeText),
@@ -539,54 +699,56 @@ async function findByBN({
     )
   }
 
-  const filteredRows =
+  const rows =
     await getFilteredRows(
       employeeCode,
       month,
       year
     )
 
-  const searchBN =
-    normalizeSearch(
-      bn
-    )
+  const target =
+    normalizeSearch(bn)
 
-  const matchedRows =
-    filteredRows.filter(
+  const matched =
+    rows.filter(
       function (r) {
 
         return (
           normalizeSearch(
             r.bn
           ) ===
-          searchBN
+          target
         )
 
       }
     )
 
   const list =
-    matchedRows
+    matched
       .slice(0, MAX_RESULT)
       .map(formatResult)
 
   console.log(
-    'FIND BY BN:',
+    'FIND BN:',
     {
       bn,
       matched:
-        matchedRows.length,
+        matched.length,
 
-      doctor:
-        list[0]
-          ? {
+      result:
+        list.map(
+          function (x) {
+
+            return {
               doctorID:
-                list[0].doctorID,
+                x.doctorID,
 
               doctorName:
-                list[0].doctorName
+                x.doctorName
             }
-          : null
+
+          }
+        )
     }
   )
 
@@ -598,7 +760,7 @@ async function findByBN({
       list.length > 0,
 
     count:
-      matchedRows.length,
+      matched.length,
 
     list
 
@@ -623,40 +785,37 @@ async function findByHN({
     )
   }
 
-  const filteredRows =
+  const rows =
     await getFilteredRows(
       employeeCode,
       month,
       year
     )
 
-  const searchHN =
-    normalizeSearch(
-      hn
-    )
+  const target =
+    normalizeSearch(hn)
 
   const list = []
 
   for (
     let i = 0;
-    i < filteredRows.length;
+    i < rows.length;
     i++
   ) {
 
-    const r =
-      filteredRows[i]
-
     if (
       normalizeSearch(
-        r.hn
+        rows[i].hn
       ) !==
-      searchHN
+      target
     ) {
       continue
     }
 
     list.push(
-      formatResult(r)
+      formatResult(
+        rows[i]
+      )
     )
 
     if (
@@ -701,36 +860,31 @@ async function findByName({
     )
   }
 
-  const filteredRows =
+  const rows =
     await getFilteredRows(
       employeeCode,
       month,
       year
     )
 
-  const searchName =
-    normalizeSearch(
-      name
-    )
+  const target =
+    normalizeSearch(name)
 
-  const matchedRows =
-    filteredRows.filter(
+  const matched =
+    rows.filter(
       function (r) {
 
-        return (
-          normalizeSearch(
-            r.name
-          )
-            .includes(
-              searchName
-            )
+        return normalizeSearch(
+          r.name
+        ).includes(
+          target
         )
 
       }
     )
 
   const list =
-    matchedRows
+    matched
       .slice(0, MAX_RESULT)
       .map(formatResult)
 
@@ -742,7 +896,7 @@ async function findByName({
       list.length > 0,
 
     count:
-      matchedRows.length,
+      matched.length,
 
     list
 
@@ -767,22 +921,14 @@ async function findByDate({
     )
   }
 
-
-  // ==================================================
-  // GET DAY
-  // ==================================================
-
   const day =
-    extractDay(
-      date
-    )
+    extractDay(date)
 
   if (!day) {
     throw new Error(
-      'Invalid date. Use DD or DD/MM/YYYY'
+      'Invalid date'
     )
   }
-
 
   const targetMonth =
     String(month || '')
@@ -793,68 +939,39 @@ async function findByDate({
     String(year || '')
       .trim()
 
-
-  // ==================================================
-  // FILTER MONTH / YEAR
-  // ==================================================
-
-  const filteredRows =
+  const rows =
     await getFilteredRows(
       employeeCode,
       targetMonth,
       targetYear
     )
 
-
   console.log(
     'SEARCH DATE:',
     {
       employeeCode,
-      targetMonth,
-      targetYear,
-      targetDay:
-        day,
-
-      filteredCount:
-        filteredRows.length
+      month:
+        targetMonth,
+      year:
+        targetYear,
+      day,
+      filtered:
+        rows.length
     }
   )
 
-
-  // ==================================================
-  // MATCH DAY
-  // ==================================================
-
-  const matchedRows =
-    filteredRows.filter(
+  const matched =
+    rows.filter(
       function (r) {
 
-        const rowDate =
-          toDateShort(
-            r.dateText
-          )
-
-        if (!rowDate) {
+        if (!r._date) {
           return false
         }
 
-        const parts =
-          rowDate.split('/')
+        const same =
+          r._date.day === day
 
-        if (
-          parts.length !== 3
-        ) {
-          return false
-        }
-
-        const rowDay =
-          parts[0]
-
-        const matched =
-          rowDay === day
-
-
-        if (matched) {
+        if (same) {
 
           console.log(
             'DATE MATCH:',
@@ -865,8 +982,8 @@ async function findByDate({
               rawDate:
                 r.dateText,
 
-              normalizedDate:
-                rowDate,
+              normalized:
+                r._date.short,
 
               doctorID:
                 r.doctorID,
@@ -878,33 +995,28 @@ async function findByDate({
 
         }
 
-
-        return matched
-
+        return same
       }
     )
 
-
   const list =
-    matchedRows
+    matched
       .slice(0, MAX_RESULT)
       .map(formatResult)
-
 
   console.log(
     'SEARCH DATE RESULT:',
     {
-      date:
+      target:
         `${day}/${targetMonth}/${targetYear}`,
 
       filtered:
-        filteredRows.length,
+        rows.length,
 
       matched:
-        matchedRows.length
+        matched.length
     }
   )
-
 
   return {
 
@@ -914,7 +1026,7 @@ async function findByDate({
       list.length > 0,
 
     count:
-      matchedRows.length,
+      matched.length,
 
     date:
       `${day}/${targetMonth}/${targetYear}`,
@@ -926,138 +1038,7 @@ async function findByDate({
 
 
 // ==================================================
-// EXTRACT DAY
-// ==================================================
-
-function extractDay(value) {
-
-  const s =
-    cleanText(value)
-
-  if (!s) {
-    return ''
-  }
-
-
-  // 31
-  if (
-    /^\d{1,2}$/.test(s)
-  ) {
-
-    const day =
-      parseInt(
-        s,
-        10
-      )
-
-    if (
-      day < 1 ||
-      day > 31
-    ) {
-      return ''
-    }
-
-    return String(day)
-      .padStart(2, '0')
-  }
-
-
-  // 31/08/2026
-  // 31-08-2026
-
-  let match =
-    s.match(
-      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
-    )
-
-  if (match) {
-
-    const day =
-      parseInt(
-        match[1],
-        10
-      )
-
-    if (
-      day < 1 ||
-      day > 31
-    ) {
-      return ''
-    }
-
-    return String(day)
-      .padStart(2, '0')
-  }
-
-
-  // 31 August 2026
-
-  match =
-    s.match(
-      /^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/i
-    )
-
-  if (match) {
-
-    const day =
-      parseInt(
-        match[1],
-        10
-      )
-
-    if (
-      day < 1 ||
-      day > 31
-    ) {
-      return ''
-    }
-
-    return String(day)
-      .padStart(2, '0')
-  }
-
-
-  // August 31 2026
-
-  match =
-    s.match(
-      /^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/i
-    )
-
-  if (match) {
-
-    const day =
-      parseInt(
-        match[2],
-        10
-      )
-
-    if (
-      day < 1 ||
-      day > 31
-    ) {
-      return ''
-    }
-
-    return String(day)
-      .padStart(2, '0')
-  }
-
-
-  const normalized =
-    toDateShort(s)
-
-  if (!normalized) {
-    return ''
-  }
-
-  return normalized
-    .split('/')[0]
-}
-
-
-// ==================================================
-// COUNT BY DATE RECEIPT
+// COUNT BY DATE
 // ==================================================
 
 async function countByDateReceipt({
@@ -1093,7 +1074,425 @@ async function countByDateReceipt({
 
 
 // ==================================================
-// CLEAN TEXT
+// EXTRACT DAY
+// ==================================================
+
+function extractDay(value) {
+
+  const s =
+    cleanText(value)
+
+  if (!s) {
+    return ''
+  }
+
+  if (
+    /^\d{1,2}$/.test(s)
+  ) {
+
+    const d =
+      parseInt(s, 10)
+
+    if (
+      d < 1 ||
+      d > 31
+    ) {
+      return ''
+    }
+
+    return String(d)
+      .padStart(2, '0')
+  }
+
+  let match =
+    s.match(
+      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
+    )
+
+  if (match) {
+
+    return String(
+      parseInt(
+        match[1],
+        10
+      )
+    ).padStart(2, '0')
+  }
+
+  match =
+    s.match(
+      /^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/i
+    )
+
+  if (match) {
+
+    return String(
+      parseInt(
+        match[1],
+        10
+      )
+    ).padStart(2, '0')
+  }
+
+  match =
+    s.match(
+      /^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/i
+    )
+
+  if (match) {
+
+    return String(
+      parseInt(
+        match[2],
+        10
+      )
+    ).padStart(2, '0')
+  }
+
+  const parsed =
+    parseSheetDate(s)
+
+  return parsed
+    ? parsed.day
+    : ''
+}
+
+
+// ==================================================
+// PARSE SHEET DATE
+// ==================================================
+
+function parseSheetDate(value) {
+
+  const s =
+    cleanText(value)
+
+  if (!s) {
+    return null
+  }
+
+
+  // ==================================================
+  // DD/MM/YYYY
+  // ==================================================
+
+  let match =
+    s.match(
+      /^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/
+    )
+
+  if (match) {
+
+    return makeDateInfo(
+      match[1],
+      match[2],
+      match[3]
+    )
+  }
+
+
+  // ==================================================
+  // DD-MM-YYYY
+  // ==================================================
+
+  match =
+    s.match(
+      /^(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{4})$/
+    )
+
+  if (match) {
+
+    return makeDateInfo(
+      match[1],
+      match[2],
+      match[3]
+    )
+  }
+
+
+  // ==================================================
+  // DD Month YYYY
+  // 31 August 2026
+  // ==================================================
+
+  match =
+    s.match(
+      /^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/i
+    )
+
+  if (match) {
+
+    const month =
+      getMonthNumber(
+        match[2]
+      )
+
+    if (!month) {
+      return null
+    }
+
+    return makeDateInfo(
+      match[1],
+      month,
+      match[3]
+    )
+  }
+
+
+  // ==================================================
+  // Month DD YYYY
+  // August 31 2026
+  // ==================================================
+
+  match =
+    s.match(
+      /^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/i
+    )
+
+  if (match) {
+
+    const month =
+      getMonthNumber(
+        match[1]
+      )
+
+    if (!month) {
+      return null
+    }
+
+    return makeDateInfo(
+      match[2],
+      month,
+      match[3]
+    )
+  }
+
+
+  // ==================================================
+  // YYYY-MM-DD
+  // ==================================================
+
+  match =
+    s.match(
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+    )
+
+  if (match) {
+
+    return makeDateInfo(
+      match[3],
+      match[2],
+      match[1]
+    )
+  }
+
+
+  // ==================================================
+  // GOOGLE SHEETS SERIAL
+  // ==================================================
+
+  if (
+    /^\d+(\.\d+)?$/.test(s)
+  ) {
+
+    const serial =
+      Number(s)
+
+    if (
+      serial > 20000 &&
+      serial < 100000
+    ) {
+
+      const base =
+        Date.UTC(
+          1899,
+          11,
+          30
+        )
+
+      const date =
+        new Date(
+          base +
+          Math.floor(serial) *
+          86400000
+        )
+
+      return makeDateInfo(
+        date.getUTCDate(),
+        date.getUTCMonth() + 1,
+        date.getUTCFullYear()
+      )
+    }
+  }
+
+
+  // ==================================================
+  // ISO / OTHER
+  // ==================================================
+
+  const parsed =
+    new Date(s)
+
+  if (
+    !isNaN(
+      parsed.getTime()
+    )
+  ) {
+
+    return makeDateInfo(
+      parsed.getDate(),
+      parsed.getMonth() + 1,
+      parsed.getFullYear()
+    )
+  }
+
+  return null
+}
+
+
+// ==================================================
+// MAKE DATE INFO
+// ==================================================
+
+function makeDateInfo(
+  day,
+  month,
+  year
+) {
+
+  const d =
+    parseInt(day, 10)
+
+  const m =
+    parseInt(month, 10)
+
+  const y =
+    parseInt(year, 10)
+
+  if (
+    !d ||
+    !m ||
+    !y ||
+    d < 1 ||
+    d > 31 ||
+    m < 1 ||
+    m > 12
+  ) {
+    return null
+  }
+
+  const test =
+    new Date(
+      y,
+      m - 1,
+      d
+    )
+
+  if (
+    test.getFullYear() !== y ||
+    test.getMonth() !== m - 1 ||
+    test.getDate() !== d
+  ) {
+    return null
+  }
+
+  return {
+
+    day:
+      String(d)
+        .padStart(2, '0'),
+
+    month:
+      String(m)
+        .padStart(2, '0'),
+
+    year:
+      String(y),
+
+    short:
+      `${String(d).padStart(2, '0')}/` +
+      `${String(m).padStart(2, '0')}/` +
+      `${y}`
+
+  }
+}
+
+
+// ==================================================
+// DATE SHORT
+// ==================================================
+
+function toDateShort(value) {
+
+  const result =
+    parseSheetDate(value)
+
+  return result
+    ? result.short
+    : ''
+}
+
+
+// ==================================================
+// MONTH
+// ==================================================
+
+function getMonthNumber(
+  monthName
+) {
+
+  const months = {
+
+    january: 1,
+    jan: 1,
+
+    february: 2,
+    feb: 2,
+
+    march: 3,
+    mar: 3,
+
+    april: 4,
+    apr: 4,
+
+    may: 5,
+
+    june: 6,
+    jun: 6,
+
+    july: 7,
+    jul: 7,
+
+    august: 8,
+    aug: 8,
+
+    september: 9,
+    sep: 9,
+    sept: 9,
+
+    october: 10,
+    oct: 10,
+
+    november: 11,
+    nov: 11,
+
+    december: 12,
+    dec: 12
+
+  }
+
+  return (
+    months[
+      String(monthName)
+        .toLowerCase()
+        .trim()
+    ] || 0
+  )
+}
+
+
+// ==================================================
+// CLEAN
 // ==================================================
 
 function cleanText(value) {
@@ -1204,400 +1603,6 @@ function formatNumber(value) {
 
 
 // ==================================================
-// DATE -> DD/MM/YYYY
-// ==================================================
-
-function toDateShort(dateValue) {
-
-  try {
-
-    if (
-      dateValue === null ||
-      dateValue === undefined ||
-      dateValue === ''
-    ) {
-      return ''
-    }
-
-
-    // ==================================================
-    // JS DATE
-    // ==================================================
-
-    if (
-      Object.prototype.toString.call(
-        dateValue
-      ) === '[object Date]'
-    ) {
-
-      if (
-        isNaN(
-          dateValue.getTime()
-        )
-      ) {
-        return ''
-      }
-
-      return normalizeDate(
-        dateValue.getDate(),
-        dateValue.getMonth() + 1,
-        dateValue.getFullYear()
-      )
-    }
-
-
-    const s =
-      cleanText(dateValue)
-
-    if (!s) {
-      return ''
-    }
-
-
-    // ==================================================
-    // DD/MM/YYYY
-    // ==================================================
-
-    let match =
-      s.match(
-        /^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/
-      )
-
-    if (match) {
-
-      return normalizeDate(
-        match[1],
-        match[2],
-        match[3]
-      )
-    }
-
-
-    // ==================================================
-    // DD-MM-YYYY
-    // ==================================================
-
-    match =
-      s.match(
-        /^(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{4})$/
-      )
-
-    if (match) {
-
-      return normalizeDate(
-        match[1],
-        match[2],
-        match[3]
-      )
-    }
-
-
-    // ==================================================
-    // DD Month YYYY
-    //
-    // 31 August 2026
-    // 31 August, 2026
-    // ==================================================
-
-    match =
-      s.match(
-        /^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/i
-      )
-
-    if (match) {
-
-      const day =
-        parseInt(
-          match[1],
-          10
-        )
-
-      const month =
-        getMonthNumber(
-          match[2]
-        )
-
-      const year =
-        parseInt(
-          match[3],
-          10
-        )
-
-      if (!month) {
-        return ''
-      }
-
-      return normalizeDate(
-        day,
-        month,
-        year
-      )
-    }
-
-
-    // ==================================================
-    // Month DD YYYY
-    //
-    // August 31 2026
-    // August 31, 2026
-    // ==================================================
-
-    match =
-      s.match(
-        /^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/i
-      )
-
-    if (match) {
-
-      const month =
-        getMonthNumber(
-          match[1]
-        )
-
-      const day =
-        parseInt(
-          match[2],
-          10
-        )
-
-      const year =
-        parseInt(
-          match[3],
-          10
-        )
-
-      if (!month) {
-        return ''
-      }
-
-      return normalizeDate(
-        day,
-        month,
-        year
-      )
-    }
-
-
-    // ==================================================
-    // YYYY-MM-DD
-    // ==================================================
-
-    match =
-      s.match(
-        /^(\d{4})-(\d{1,2})-(\d{1,2})$/
-      )
-
-    if (match) {
-
-      return normalizeDate(
-        match[3],
-        match[2],
-        match[1]
-      )
-    }
-
-
-    // ==================================================
-    // GOOGLE SHEETS SERIAL DATE
-    // ==================================================
-
-    if (
-      /^\d+(\.\d+)?$/.test(s)
-    ) {
-
-      const serial =
-        Number(s)
-
-      if (
-        serial > 20000 &&
-        serial < 100000
-      ) {
-
-        const base =
-          new Date(
-            Date.UTC(
-              1899,
-              11,
-              30
-            )
-          )
-
-        const date =
-          new Date(
-            base.getTime() +
-            Math.floor(serial) *
-            86400000
-          )
-
-        return normalizeDate(
-          date.getUTCDate(),
-          date.getUTCMonth() + 1,
-          date.getUTCFullYear()
-        )
-      }
-    }
-
-
-    // ==================================================
-    // FALLBACK
-    // ==================================================
-
-    const d =
-      new Date(s)
-
-    if (
-      isNaN(
-        d.getTime()
-      )
-    ) {
-      return ''
-    }
-
-    return normalizeDate(
-      d.getDate(),
-      d.getMonth() + 1,
-      d.getFullYear()
-    )
-
-  } catch (err) {
-
-    console.error(
-      'toDateShort ERROR:',
-      {
-        value: dateValue,
-        error: err.message
-      }
-    )
-
-    return ''
-  }
-}
-
-
-// ==================================================
-// NORMALIZE DATE
-// ==================================================
-
-function normalizeDate(
-  day,
-  month,
-  year
-) {
-
-  const d =
-    parseInt(
-      day,
-      10
-    )
-
-  const m =
-    parseInt(
-      month,
-      10
-    )
-
-  const y =
-    parseInt(
-      year,
-      10
-    )
-
-  if (
-    !d ||
-    !m ||
-    !y ||
-    d < 1 ||
-    d > 31 ||
-    m < 1 ||
-    m > 12
-  ) {
-    return ''
-  }
-
-  const testDate =
-    new Date(
-      y,
-      m - 1,
-      d
-    )
-
-  if (
-    testDate.getFullYear() !== y ||
-    testDate.getMonth() !== m - 1 ||
-    testDate.getDate() !== d
-  ) {
-    return ''
-  }
-
-  return (
-    String(d).padStart(2, '0') +
-    '/' +
-    String(m).padStart(2, '0') +
-    '/' +
-    String(y)
-  )
-}
-
-
-// ==================================================
-// MONTH NAME -> NUMBER
-// ==================================================
-
-function getMonthNumber(
-  monthName
-) {
-
-  const months = {
-
-    january: 1,
-    jan: 1,
-
-    february: 2,
-    feb: 2,
-
-    march: 3,
-    mar: 3,
-
-    april: 4,
-    apr: 4,
-
-    may: 5,
-
-    june: 6,
-    jun: 6,
-
-    july: 7,
-    jul: 7,
-
-    august: 8,
-    aug: 8,
-
-    september: 9,
-    sep: 9,
-    sept: 9,
-
-    october: 10,
-    oct: 10,
-
-    november: 11,
-    nov: 11,
-
-    december: 12,
-    dec: 12
-
-  }
-
-  return (
-    months[
-      String(monthName)
-        .toLowerCase()
-        .trim()
-    ] || 0
-  )
-}
-
-
-// ==================================================
 // SAFE JSON
 // ==================================================
 
@@ -1629,6 +1634,7 @@ function safeParseJson(value) {
   } catch (err) {
 
     return []
+
   }
 }
 
